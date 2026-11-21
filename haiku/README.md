@@ -35,7 +35,8 @@ fail), so the engine uses ffmpeg directly.
 A native launcher (`launcher/`) replaces the Qt
 frontend's local pages, in tabs:
 
-- **Match**: opponent (the computer at five levels, or a second player),
+- **Match**: opponent (the computer at five levels, a second player, or
+  one of your other saved teams, with its own hedgehogs, hats, flag and keys),
   hedgehogs per team, scheme and weapon set (the predefined ones and your
   own, each with an editor window), game styles, generated, hand-drawn or
   fixed maps, theme, and for generated maps the map size, maze style,
@@ -81,7 +82,11 @@ and, from the Hedgewars menu, two windows:
   a room, and per-team hedgehog numbers and colours.
 - **Downloadable content**: the add-ons listed on hedgewars.org (with
   libcurl), downloaded into `~/config/settings/Hedgewars/Data`, where the
-  engine mounts them.
+  engine mounts them. The launcher's menus (maps, themes, styles, hats,
+  flags, graves, forts, voices, missions) list what add-on packages (`.hwp`,
+  read as zips by `launcher/DataFS.cpp`) and loose files in that folder
+  bring, as the engine sees them; a package downloaded while the launcher
+  runs shows up after a restart.
 
 **Settings…** (Alt+,) sets the language, window size, full screen,
 quality, weapon descriptions, frame rate, damage display, sound, music,
@@ -108,7 +113,7 @@ On Haiku R1/beta6 (x86_64), from the top of the tree (the package also runs on R
 `python3 haiku/tools/gen-schemes.py > haiku/launcher/schemes.h`.
 
 `make -f haiku/Makefile test` runs the tests: the surface (blit and clipping),
-statistics, server protocol, add-on list, INI file, drawn map and scheme file code on any system,
+statistics, server protocol, add-on list, add-on package, INI file, drawn map and scheme file code on any system,
 and on Haiku also the launcher's progress file.
 
 `HWHAIKU_DEBUG=1` makes the engine print every input event it receives.
@@ -121,7 +126,7 @@ and on Haiku also the launcher's progress file.
 | Rendering (llvmpipe in a VM) | works |
 | Keyboard and mouse | works; keys arrive as SDL scancodes |
 | Sound effects, voices, music | works (checked from the VM's captured audio) |
-| Local game: you against the computer, or two players on one computer | works, from the launcher; checked with Default and Pro Mode, random and fixed (Bath) maps |
+| Local game: you against the computer, or two players on one computer | works, from the launcher; checked with Default and Pro Mode, random and fixed (Bath) maps; a saved team as the second player brought its name, hogs, hat, flag and own keys (D walked its hedgehog right) |
 | Training missions | works (Basic Movement: the hedgehog walks, the mission advances) |
 | Saved games and demos | works: quitting a game keeps it and playing it resumes where it stopped; a finished game is kept as a demo and plays back to its end |
 | Statistics after a game | works (winner, ranking, awards, health graph; pictures from the Qt frontend) |
@@ -135,9 +140,10 @@ and on Haiku also the launcher's progress file.
 | Hand-drawn maps | works: drawn with pencil, rectangle and eraser, saved as `.hwmap`, played as a match on that land; opening a `.hwmap` from the Qt frontend is checked by the host test (decodes and encodes back to the same bytes) |
 | Video recording | works: a clip recorded with R in a match became an mp4 that MediaPlayer plays with sound; WebM at 24 frames/s checked the same way; size and bit rate are fixed |
 | Network play | works: a net game between Haiku R1/beta6 and Renku (two QEMU machines) through the repo's `hedgewars-server` on the host: lobby, room, teams, hedgehog count, chat in the lobby, the room and the game, the game in sync to its end (the same statistics on both) and a demo kept on each; the room password and taken-nickname prompts checked; the registered-nickname password exchange is written, not tested (the local server has no accounts) |
-| Downloadable content | works: the list loads from hedgewars.org and a package (Ready Timer) lands in the Data folder, on Renku; the launcher's own menus don't list what add-ons bring (the engine uses them) |
+| Downloadable content | works: the list loads from hedgewars.org and a package (Ready Timer) lands in the Data folder, on Renku |
+| Add-ons in the launcher's menus | works: a downloaded theme package (Patagonia) appeared in Theme and a match played on it; a test package's map, hat and flag appeared in Map and on the Team tab and a match played on that map with them; add-on missions are listed but their pictures aren't shown |
 | Scheme and weapon set editors | works: a new scheme (turn time 20 s) and a copied weapon set (2 bazookas) were made in the editors, saved as `.hwg`/`.hwa`, and the engine got them (turn timer counted from 20; `HEDGEWARS_LOG_CONFIG=1` prints the config sent); copy and delete checked |
-| Map size, maze style, feature size, seed | works for a maze ("Large islands" and a typed seed reached the engine: it logged `large_islands`); WFC is offered but not played |
+| Map size, maze style, feature size, seed | works: a maze ("Large islands" and a typed seed reached the engine: it logged `large_islands`), WFC, Cave with "Medium islands" and Forts at feature size 4 each played |
 | App icon | HVIF, from `tools/make-icon.py` |
 | arm64 | not built: Renku OS arm64 (hrev60072_940) has no OpenGL (no Mesa in its ports repository, no OpenGL kit in the system), which the engine draws with; Rust has no aarch64 Haiku target either (it would need a custom target and a nightly toolchain). Free Pascal is no longer needed |
 

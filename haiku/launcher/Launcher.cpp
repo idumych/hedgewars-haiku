@@ -241,13 +241,7 @@ public:
 		fStyle->Menu()->AddItem(new BSeparatorItem(), 1);
 
 		names.assign(kGenerated, kGenerated + kGenCount);
-		for (const std::string& m : list_dir("Maps", NULL, true)) {
-			BPath dir(gDataDir.Path(), ("Maps/" + m).c_str());
-			// missions (with a map.lua) and the test map aren't for a match
-			if (m != "test" && BEntry(BPath(dir.Path(), "map.cfg").Path()).Exists()
-				&& !BEntry(BPath(dir.Path(), "map.lua").Path()).Exists())
-				fMaps.push_back(m);
-		}
+		fMaps = match_maps();
 		for (const std::string& m : fMaps)
 			names.push_back(spaced(m));
 		fMap = Popup("Map:", names, 0, kMsgMap);
@@ -270,6 +264,15 @@ public:
 		hogsField->SetExplicitMaxSize(BSize(90, B_SIZE_UNSET));
 		hogsField->SetExplicitAlignment(BAlignment(B_ALIGN_LEFT, B_ALIGN_VERTICAL_CENTER));
 
+		// the buttons beside menus no taller than the menus, so every row is as tall
+		BButton* editSchemes = new BButton("Edit…", new BMessage(kMsgEditSchemes));
+		BButton* editWeapons = new BButton("Edit…", new BMessage(kMsgEditWeapons));
+		float rowHeight = fScheme->PreferredSize().height;
+		for (BButton* b : {editSchemes, editWeapons, fEditDrawing}) {
+			b->SetExplicitMinSize(BSize(B_SIZE_UNSET, rowHeight));
+			b->SetExplicitMaxSize(BSize(B_SIZE_UNSET, rowHeight));
+		}
+
 		BLayoutBuilder::Group<>(v)
 			.SetInsets(B_USE_DEFAULT_SPACING)
 			.AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
@@ -277,9 +280,9 @@ public:
 				.Add(fHogs->CreateLabelLayoutItem(), 0, 1)
 				.Add(hogsField, 1, 1)
 				.AddMenuField(fScheme, 0, 2)
-				.Add(new BButton("Edit…", new BMessage(kMsgEditSchemes)), 2, 2)
+				.Add(editSchemes, 2, 2)
 				.AddMenuField(fWeapons, 0, 3)
-				.Add(new BButton("Edit…", new BMessage(kMsgEditWeapons)), 2, 3)
+				.Add(editWeapons, 2, 3)
 				.AddMenuField(fStyle, 0, 4)
 				.AddMenuField(fMap, 0, 5)
 				.Add(fEditDrawing, 2, 5)
@@ -381,14 +384,18 @@ public:
 		std::vector<TeamInfo> teams = {fTeamView->Team()};
 		int opp = Marked(fOpponent);
 		TeamInfo other;
-		other.name = opp < 5 ? "Computer" : "Second Player";
-		other.difficulty = opp < 5 ? opp + 1 : 0;
-		other.color = 0x4980c1;
-		other.flag = "cm_binary";
-		for (int h = 0; h < 8; h++) {
-			other.hogs[h] = pick(fNames, "Hog " + std::to_string(h + 1));
-			other.hats[h] = pick(fHats, "NoHat");
+		if (opp > 5)	// a saved team, with its own hogs, hats, flag and keys
+			other = TeamView::SavedTeam(MarkedLabel(fOpponent));
+		else {
+			other.name = opp < 5 ? "Computer" : "Second Player";
+			other.difficulty = opp < 5 ? opp + 1 : 0;
+			other.flag = "cm_binary";
+			for (int h = 0; h < 8; h++) {
+				other.hogs[h] = pick(fNames, "Hog " + std::to_string(h + 1));
+				other.hats[h] = pick(fHats, "NoHat");
+			}
 		}
+		other.color = 0x4980c1;
 		teams.push_back(other);
 		size_t n = ammo.size() / 4;
 		for (const TeamInfo& t : teams) {
@@ -640,6 +647,7 @@ public:
 			if (s.FindInt32("tab", &v) == B_OK) fTabs->Select(v);
 		}
 		fTeamView->Load(s);
+		FillOpponents(loaded && s.FindString("opponent", &str) == B_OK ? str : MarkedLabel(fOpponent));
 		UpdateThemeField();
 	}
 
@@ -654,6 +662,22 @@ public:
 		s.AddInt32("tab", fTabs->Selection());
 		fTeamView->Save(s);
 		save_message(s, SettingsPath());
+	}
+
+	// the computer, another player, or one of the other saved teams; keeps the choice
+	void FillOpponents(std::string keep)
+	{
+		BMenu* menu = fOpponent->Menu();
+		while (menu->CountItems() > 6)
+			delete menu->RemoveItem(6);
+		std::vector<std::string> teams = fTeamView->OtherTeams();
+		if (!teams.empty())
+			menu->AddItem(new BSeparatorItem());
+		for (const std::string& t : teams)
+			menu->AddItem(new BMenuItem(t.c_str(), NULL));
+		if (!menu->FindItem(keep.c_str()))
+			keep = kOpponents[5];
+		Mark(fOpponent, keep.c_str());
 	}
 
 	// a fixed map brings its own theme
@@ -810,6 +834,8 @@ public:
 			case kMsgTab: {
 				int i = fTabs->Selection();
 				SetDefaultButton(i >= 0 && i < 5 ? fDefault[i] : NULL);	// the Team tab has none
+				if (i == 0)	// teams may have changed on the Team tab
+					FillOpponents(MarkedLabel(fOpponent));
 				break;
 			}
 			case kMsgMissionKind: FillMissions(); break;

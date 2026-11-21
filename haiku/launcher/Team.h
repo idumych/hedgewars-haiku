@@ -19,6 +19,8 @@ public:
 	void Load(const BMessage& settings);	// after find_data(); picks the team used last
 	void Save(BMessage& settings);	// writes the team's file too
 	TeamInfo Team();	// the fields, saved to the team's file
+	std::vector<std::string> OtherTeams() const;	// the saved teams but this one
+	static TeamInfo SavedTeam(const std::string& name);	// from its file
 	void AttachedToWindow() override;
 	void MessageReceived(BMessage* msg) override;
 

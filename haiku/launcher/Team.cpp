@@ -268,6 +268,23 @@ TeamInfo TeamView::Team()
 	return fTeam;
 }
 
+std::vector<std::string> TeamView::OtherTeams() const
+{
+	std::vector<std::string> out;
+	for (const std::string& t : fTeams)
+		if (t != fTeam.name)
+			out.push_back(t);
+	return out;
+}
+
+TeamInfo TeamView::SavedTeam(const std::string& name)
+{
+	TeamInfo t;
+	Binds b;	// the engine reads them from the file itself
+	load_team(name, t, b);
+	return t;
+}
+
 void TeamView::ToFields()
 {
 	fTeamName->SetText(fTeam.name.c_str());

@@ -121,10 +121,13 @@ test:
 	$(CXX) -std=c++17 -Wall -g $(TEST_FLAGS) -Ihaiku/launcher -Ifrontend-qt6 \
 		-o $(OBJ)/scheme_test haiku/tests/scheme_test.cpp haiku/launcher/SchemeData.cpp
 	$(OBJ)/scheme_test
+	$(CXX) -std=c++17 -Wall -g $(TEST_FLAGS) -Ihaiku/launcher \
+		-o $(OBJ)/datafs_test haiku/tests/datafs_test.cpp haiku/launcher/DataFS.cpp -lz
+	$(OBJ)/datafs_test
 ifeq ($(shell uname -s),Haiku)
 	$(CXX) -std=c++17 -Wall -Ihaiku/launcher -o $(OBJ)/progress_test haiku/tests/progress_test.cpp \
 		haiku/launcher/Game.cpp haiku/launcher/Settings.cpp haiku/launcher/BindEditor.cpp \
-		haiku/launcher/Binds.cpp haiku/launcher/Ini.cpp -lbe -lnetwork
+		haiku/launcher/Binds.cpp haiku/launcher/Ini.cpp haiku/launcher/DataFS.cpp -lbe -lnetwork -lz
 	$(OBJ)/progress_test
 endif
 
