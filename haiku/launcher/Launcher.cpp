@@ -1,300 +1,168 @@
 // Hedgewars launcher for Haiku: a native stand-in for the Qt frontend's
-// local game. It sets up a match, starts hwengine with --internal --port,
-// and answers the engine's IPC requests (see frontend-qt6/game.cpp).
+// local pages (game setup, training and missions, campaigns, demos and
+// saved games, the team). Game.cpp runs the engine.
+#include <AboutWindow.h>
 #include <Alert.h>
 #include <Application.h>
+#include <Bitmap.h>
 #include <Button.h>
-#include <CheckBox.h>
 #include <Directory.h>
 #include <Entry.h>
 #include <File.h>
 #include <FindDirectory.h>
+#include <GroupView.h>
 #include <LayoutBuilder.h>
+#include <ListView.h>
 #include <MenuBar.h>
 #include <MenuField.h>
 #include <MenuItem.h>
-#include <Path.h>
+#include <Node.h>
 #include <PopUpMenu.h>
-#include <Roster.h>
-#include <Screen.h>
+#include <ScrollView.h>
+#include <SeparatorItem.h>
 #include <Spinner.h>	// in private/interface on R1/beta6
 #include <StringView.h>
+#include <TabView.h>
 #include <TextControl.h>
+#include <TextView.h>
+#include <TranslationUtils.h>
 #include <Window.h>
-#include <AboutWindow.h>
-
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <poll.h>
-#include <signal.h>
-#include <spawn.h>
-#include <sys/socket.h>
-#include <sys/wait.h>
-#include <unistd.h>
 
 #include <algorithm>
-#include <stdio.h>
 #include <stdlib.h>
-#include <string>
-#include <vector>
+#include <string.h>
+#include <time.h>
 
-#include "weapons.h"	// frontend-qt6: the default ammo scheme
-
-extern char** environ;
+#include "Game.h"
+#include "schemes.h"	// generated from frontend-qt6/model/gameSchemeModel.cpp
+#include "weapons.h"	// frontend-qt6
 
 static const char* kSignature = "application/x-vnd.hedgewars-launcher";
-static const char* kAmmo = AMMOLINE_DEFAULT_QT AMMOLINE_DEFAULT_PROB AMMOLINE_DEFAULT_DELAY AMMOLINE_DEFAULT_CRATE;
 
-enum { kMsgStart = 'strt', kMsgGameOver = 'gmov' };
+#define AMMO(n) AMMOLINE_##n##_QT AMMOLINE_##n##_PROB AMMOLINE_##n##_DELAY AMMOLINE_##n##_CRATE
+static const struct { const char* name; const char* ammo; } kWeapons[] = {	// hwconsts.cpp
+	{"Default", AMMO(DEFAULT)}, {"Crazy", AMMO(CRAZY)}, {"Pro Mode", AMMO(PROMODE)},
+	{"Shoppa", AMMO(SHOPPA)}, {"Clean Slate", AMMO(CLEAN)}, {"Minefield", AMMO(MINES)},
+	{"Thinking with Portals", AMMO(PORTALS)}, {"One of Everything", AMMO(ONEEVERY)},
+	{"Highlander", AMMO(HIGHLANDER)}, {"Balanced Random Weapon", AMMO(BRW)},
+	{"Construction Mode", AMMO(CONSTRUCTION)}, {"Shoppa Pro", AMMO(SHOPPAPRO)},
+	{"HedgeEditor", AMMO(HEDGEEDITOR)},
+};
+
+// GameCFGWidget::getGameFlags: scheme fields 1..25
+static const uint32 kFlagBits[26] = {0, 0x1000, 0x10, 0x4, 0x8, 0x20, 0x40, 0x80, 0x100,
+	0x200, 0x400, 0x800, 0x2000, 0x4000, 0x8000, 0x10000, 0x20000, 0x40000, 0x80000,
+	0x100000, 0x200000, 0x400000, 0x800000, 0x1000000, 0x2000000, 0x4000000};
+// GameCFGWidget::getFullConfig: scheme fields 26..43
+static const struct { const char* cmd; int scale; } kNumbers[18] = {
+	{"damagepct", 1}, {"turntime", 1000}, {"inithealth", 1}, {"sd_turns", 1},
+	{"casefreq", 1}, {"minestime", 1000}, {"minesnum", 1}, {"minedudpct", 1},
+	{"explosives", 1}, {"airmines", 1}, {"sentries", 1}, {"healthprob", 1},
+	{"hcaseamount", 1}, {"waterrise", 1}, {"healthdec", 1}, {"ropepct", 1},
+	{"getawaytime", 1}, {"worldedge", 1},
+};
 
 static const char* const kOpponents[] = {
 	"Computer (very hard)", "Computer (hard)", "Computer (medium)",
 	"Computer (easy)", "Computer (very easy)", "Another player on this computer",
 };
-static const char* const kMaps[] = {"Random island", "Maze", "Cave (Perlin)"};
+static const char* const kGenerated[] = {"Random island", "Maze", "Cave", "Forts"};
+static const int kGeneratedGen[] = {0, 1, 2, 4};	// e$mapgen
+static const char* const kMissionKinds[] = {"Training", "Challenge", "Scenario"};
+static const char* const kMissionKindLabels[] = {"Training", "Challenges", "Scenarios"};
 
-// ── paths ──
-static BPath sAppDir, sDataDir, sUserDir;
-
-static bool find_data()
-{
-	app_info info;
-	be_app->GetAppInfo(&info);
-	BPath app(&info.ref);
-	app.GetParent(&sAppDir);
-	std::vector<BPath> candidates;
-	if (const char* env = getenv("HEDGEWARS_DATA"))
-		candidates.push_back(BPath(env));
-	candidates.push_back(BPath(sAppDir.Path(), "Data"));
-	BPath sys;
-	if (find_directory(B_SYSTEM_DATA_DIRECTORY, &sys) == B_OK)
-		candidates.push_back(BPath(sys.Path(), "hedgewars/Data"));
-#ifdef HW_DATADIR
-	candidates.push_back(BPath(HW_DATADIR "/Data"));
-#endif
-	for (const BPath& p : candidates) {
-		BEntry e(BPath(p.Path(), "misc/keys.csv").Path());
-		if (e.Exists()) {
-			sDataDir = p;
-			break;
-		}
-	}
-	find_directory(B_USER_SETTINGS_DIRECTORY, &sUserDir);
-	sUserDir.Append("Hedgewars");
-	create_directory(sUserDir.Path(), 0755);
-	return sDataDir.InitCheck() == B_OK;
-}
-
-static std::vector<std::string> list_dir(const char* sub, const char* suffix, bool dirs)
-{
-	std::vector<std::string> out;
-	BDirectory d(BPath(sDataDir.Path(), sub).Path());
-	BEntry e;
-	while (d.GetNextEntry(&e) == B_OK) {
-		char name[B_FILE_NAME_LENGTH];
-		e.GetName(name);
-		std::string n = name;
-		if (dirs != e.IsDirectory())
-			continue;
-		if (suffix) {
-			size_t l = strlen(suffix);
-			if (n.size() <= l || n.compare(n.size() - l, l, suffix) != 0)
-				continue;
-			n.resize(n.size() - l);
-		}
-		out.push_back(n);
-	}
-	std::sort(out.begin(), out.end());
-	return out;
-}
-
-static bool theme_hidden(const std::string& theme)
-{
-	BFile f(BPath(sDataDir.Path(), ("Themes/" + theme + "/theme.cfg").c_str()).Path(), B_READ_ONLY);
-	char buf[256] = {};
-	f.Read(buf, sizeof(buf) - 1);
-	return strstr(buf, "hidden = true") != NULL;
-}
-
-static std::vector<std::string> read_lines(const char* sub)
-{
-	std::vector<std::string> out;
-	FILE* f = fopen(BPath(sDataDir.Path(), sub).Path(), "r");
-	char line[256];
-	while (f && fgets(line, sizeof(line), f)) {
-		line[strcspn(line, "\r\n")] = 0;
-		if (line[0])
-			out.push_back(line);
-	}
-	if (f)
-		fclose(f);
-	return out;
-}
-
-// ── the match ──
-struct Team {
-	std::string name;
-	int difficulty;	// 0 human, 1 (very hard) .. 5 (very easy)
-	uint32 color;
+enum {
+	kMsgStartMatch = 'stma', kMsgStartMission = 'stmi', kMsgStartCampaign = 'stca',
+	kMsgPlayRecording = 'plrc', kMsgTrashRecording = 'trrc', kMsgGameOver = 'gmov',
+	kMsgScheme = 'schm', kMsgStyle = 'styl', kMsgMap = 'map ', kMsgMissionKind = 'mkin',
+	kMsgMissionSel = 'msel', kMsgCampaign = 'camp', kMsgCampaignSel = 'csel',
+	kMsgRecordingSel = 'rsel', kMsgToggle = 'togl',
 };
 
-struct Match {
-	std::vector<Team> teams;
-	int hogs;
-	int map;
-	std::string theme;
-	bool fullscreen;
-};
+static BMessenger sWindow;
 
-static std::string pick(const std::vector<std::string>& v, const char* fallback)
+static std::string pick(const std::vector<std::string>& v, const std::string& fallback)
 {
 	return v.empty() ? fallback : v[rand() % v.size()];
 }
 
-static void add(std::string& buf, const std::string& s)
+static std::string spaced(std::string s)
 {
-	std::string m = s.substr(0, 250);	// the protocol's limit
-	buf += (char)(uint8)m.size();
-	buf += m;
+	for (char& c : s)
+		if (c == '_')
+			c = ' ';
+	return s;
 }
 
-static std::string match_config(const Match& m)
-{
-	std::string buf;
-	add(buf, "TL");
-	char seed[64];
-	snprintf(seed, sizeof(seed), "eseed {%08x-%04x-%04x}", (unsigned)rand(), rand() & 0xffff, rand() & 0xffff);
-	add(buf, seed);
-	switch (m.map) {
-		case 0:
-			add(buf, "e$mapgen 0");
-			add(buf, "e$template_filter " + std::to_string(1 << (rand() % 3)));
-			add(buf, "e$feature_size " + std::to_string(rand() % 18 + 4));
-			break;
-		case 1:
-			add(buf, "e$mapgen 1");
-			add(buf, "e$template_filter " + std::to_string(rand() % 6));
-			add(buf, "e$feature_size " + std::to_string(rand() % 16 + 6));
-			break;
-		default:
-			add(buf, "e$mapgen 2");
-			add(buf, "e$template_filter " + std::to_string(rand() % 6));
-			add(buf, "e$feature_size " + std::to_string(rand() % 18 + 4));
-			break;
+// A picture that keeps its aspect ratio
+class Thumbnail : public BView {
+public:
+	Thumbnail() : BView("thumbnail", B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE)
+	{
+		SetExplicitSize(BSize(156, 129));	// half the missions' 314x260 @2x pictures
+		SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	}
-	add(buf, "etheme " + m.theme);
+	~Thumbnail() { delete fBitmap; }
 
-	std::vector<std::string> hats = list_dir("Graphics/Hats", ".png", false);
-	std::vector<std::string> names = read_lines("Names/generic.txt");
-	for (const Team& t : m.teams) {
-		char line[300];
-		snprintf(line, sizeof(line), "eaddteam 0 %u %s", (unsigned)t.color, t.name.c_str());
-		add(buf, line);
-		add(buf, "egrave Simple");
-		add(buf, "efort Island");
-		add(buf, "evoicepack Default");
-		add(buf, "eflag hedgewars");
-		for (int h = 0; h < m.hogs; h++) {
-			add(buf, "eaddhh " + std::to_string(t.difficulty) + " 100 "
-				+ pick(names, ("Hog " + std::to_string(h + 1)).c_str()));
-			add(buf, "ehat " + pick(hats, "NoHat"));
-		}
+	void SetPicture(const std::string& dataPath)
+	{
+		delete fBitmap;
+		fBitmap = BTranslationUtils::GetBitmap(BPath(gDataDir.Path(), dataPath.c_str()).Path());
+		Invalidate();
 	}
-	size_t n = strlen(kAmmo) / 4;
-	std::string ammo = kAmmo;
-	add(buf, "eammloadt " + ammo.substr(0, n));
-	add(buf, "eammprob " + ammo.substr(n, n));
-	add(buf, "eammdelay " + ammo.substr(2 * n, n));
-	add(buf, "eammreinf " + ammo.substr(3 * n, n));
-	for (size_t i = 0; i < m.teams.size(); i++)
-		add(buf, "eammstore");
-	return buf;
+
+	void Draw(BRect) override
+	{
+		if (!fBitmap)
+			return;
+		BRect b = fBitmap->Bounds(), r = Bounds();
+		float scale = std::min(r.Width() / b.Width(), r.Height() / b.Height());
+		BRect dst(0, 0, b.Width() * scale, b.Height() * scale);
+		dst.OffsetBy((r.Width() - dst.Width()) / 2, (r.Height() - dst.Height()) / 2);
+		SetDrawingMode(B_OP_ALPHA);
+		DrawBitmap(fBitmap, b, dst, B_FILTER_BITMAP_BILINEAR);
+	}
+
+private:
+	BBitmap* fBitmap = NULL;
+};
+
+static BTextView* description_view(BScrollView** scroll)
+{
+	BTextView* t = new BTextView("description");
+	t->MakeEditable(false);
+	t->SetWordWrap(true);
+	t->SetExplicitMinSize(BSize(220, 129));
+	*scroll = new BScrollView("description scroll", t, 0, false, true);
+	return t;
 }
 
-// Runs one game: serves the engine's requests until it disconnects.
-// Returns an error message, or "" when the game ran.
-static std::string run_game(const Match& m)
+static BListView* list_view(BScrollView** scroll, uint32 selectWhat, uint32 invokeWhat)
 {
-	int server = socket(AF_INET, SOCK_STREAM, 0);
-	sockaddr_in sa = {};
-	sa.sin_family = AF_INET;
-	sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-	socklen_t len = sizeof(sa);
-	if (bind(server, (sockaddr*)&sa, sizeof(sa)) < 0 || listen(server, 1) < 0
-		|| getsockname(server, (sockaddr*)&sa, &len) < 0) {
-		close(server);
-		return "Couldn't open a local connection for the game.";
-	}
-	std::string port = std::to_string(ntohs(sa.sin_port));
-	std::string engine = BPath(sAppDir.Path(), "hwengine").Path();
-	BRect screen = BScreen().Frame();
-	std::string sw = std::to_string((int)screen.Width() + 1), sh = std::to_string((int)screen.Height() + 1);
-	std::vector<std::string> args = {engine, "--internal", "--port", port,
-		"--prefix", sDataDir.Path(), "--user-prefix", sUserDir.Path(), "--locale", "en.txt",
-		"--fullscreen-width", sw, "--fullscreen-height", sh, "--width", "1024", "--height", "768"};
-	if (m.fullscreen)
-		args.push_back("--fullscreen");
-	std::vector<char*> argv;
-	for (std::string& a : args)
-		argv.push_back(&a[0]);
-	argv.push_back(NULL);
-	pid_t pid;
-	if (posix_spawn(&pid, engine.c_str(), NULL, NULL, argv.data(), environ) != 0) {
-		close(server);
-		return "Couldn't start the game engine (hwengine).";
-	}
+	BListView* l = new BListView("list");
+	l->SetSelectionMessage(new BMessage(selectWhat));
+	l->SetInvocationMessage(new BMessage(invokeWhat));
+	l->SetExplicitMinSize(BSize(380, 170));
+	*scroll = new BScrollView("list scroll", l, 0, false, true);
+	return l;
+}
 
-	pollfd pfd = {server, POLLIN, 0};
-	int client = -1;
-	for (int waited = 0; waited < 30000 && client < 0; waited += 200) {	// 30 s for it to connect
-		if (poll(&pfd, 1, 200) > 0)
-			client = accept(server, NULL, NULL);
-		else if (waitpid(pid, NULL, WNOHANG) == pid) {
-			close(server);
-			return "The game engine quit before it started.";
-		}
-	}
-	close(server);
-	if (client < 0) {
-		kill(pid, SIGKILL);
-		waitpid(pid, NULL, 0);
-		return "The game engine didn't connect.";
-	}
-
-	std::string in;
-	char chunk[4096];
-	ssize_t got;
-	while ((got = recv(client, chunk, sizeof(chunk), 0)) > 0) {
-		in.append(chunk, got);
-		while (!in.empty() && in.size() >= (size_t)(uint8)in[0] + 1) {
-			std::string msg = in.substr(1, (uint8)in[0]);
-			in.erase(0, msg.size() + 1);
-			// the engine appends two bytes of game ticks to each message
-			std::string reply;
-			char type = msg.empty() ? 0 : msg[0];
-			if (type == '?')
-				add(reply, "!");
-			else if (type == 'C')
-				reply = match_config(m);
-			else if (type == 'E' && msg.size() > 3)
-				fprintf(stderr, "hwengine: %s\n", msg.substr(1, msg.size() - 3).c_str());
-			if (!reply.empty())
-				send(client, reply.data(), reply.size(), 0);
-		}
-	}
-	close(client);
-	int status;
-	waitpid(pid, &status, 0);
-	return "";
+static void clear_list(BListView* l)
+{
+	while (BListItem* item = l->RemoveItem((int32)0))
+		delete item;
 }
 
 // ── window ──
 class LauncherWindow : public BWindow {
 public:
-	LauncherWindow(BRect frame)
-		: BWindow(frame, "Hedgewars", B_TITLED_WINDOW,
+	LauncherWindow()
+		: BWindow(BRect(100, 100, 700, 500), "Hedgewars", B_TITLED_WINDOW,
 			B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS | B_QUIT_ON_WINDOW_CLOSE)
 	{
+		fHats = list_dir("Graphics/Hats", ".png", false);
+		fNames = read_lines("Names/generic.txt");
+
 		BMenuBar* bar = new BMenuBar("menu");
 		BMenu* app = new BMenu("Hedgewars");
 		app->AddItem(new BMenuItem("About Hedgewars", new BMessage(B_ABOUT_REQUESTED)));
@@ -302,106 +170,561 @@ public:
 		app->AddItem(new BMenuItem("Quit", new BMessage(B_QUIT_REQUESTED), 'Q'));
 		app->SetTargetForItems(be_app);
 		bar->AddItem(app);
+		BMenu* settings = new BMenu("Settings");
+		settings->AddItem(fFullscreen = new BMenuItem("Full screen", new BMessage(kMsgToggle)));
+		settings->AddItem(fSound = new BMenuItem("Sound", new BMessage(kMsgToggle)));
+		settings->AddItem(fMusic = new BMenuItem("Music", new BMessage(kMsgToggle)));
+		fSound->SetMarked(true);
+		fMusic->SetMarked(true);
+		bar->AddItem(settings);
 
-		fTeam = new BTextControl("Your team:", "Haiku Hogs", NULL);
-		fOpponent = popup("Opponent:", kOpponents, 6, 4);
-		fHogs = new BSpinner("hogs", "Hedgehogs per team:", NULL);
-		fHogs->SetRange(1, 8);
-		fHogs->SetValue(4);
-		fMap = popup("Map:", kMaps, 3, 0);
-		std::vector<std::string> themes;
-		for (const std::string& t : list_dir("Themes", NULL, true))
-			if (!theme_hidden(t))
-				themes.push_back(t);
-		std::vector<const char*> tn;
-		for (const std::string& t : themes)
-			tn.push_back(t.c_str());
-		int nature = 0;
-		for (size_t i = 0; i < themes.size(); i++)
-			if (themes[i] == "Nature")
-				nature = i;
-		fTheme = popup("Theme:", tn.data(), tn.size(), nature);
-		fFullscreen = new BCheckBox("Full screen", NULL);
-		fStart = new BButton("Start game", new BMessage(kMsgStart));
+		fTabs = new BTabView("tabs", B_WIDTH_FROM_LABEL);
+		fTabs->AddTab(MatchTab());
+		fTabs->AddTab(MissionsTab());
+		fTabs->AddTab(CampaignsTab());
+		fTabs->AddTab(RecordingsTab());
+		fTabs->AddTab(TeamTab());
+		fTabs->SetBorder(B_NO_BORDER);
 		fStatus = new BStringView("status", "");
 
 		BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 			.Add(bar)
-			.AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
+			.AddGroup(B_VERTICAL)
 				.SetInsets(B_USE_WINDOW_SPACING)
-				.AddTextControl(fTeam, 0, 0)
-				.AddMenuField(fOpponent, 0, 1)
-				.Add(fHogs->CreateLabelLayoutItem(), 0, 2)
-				.Add(fHogs->CreateTextViewLayoutItem(), 1, 2)
-				.AddMenuField(fMap, 0, 3)
-				.AddMenuField(fTheme, 0, 4)
-				.Add(fFullscreen, 1, 5)
-			.End()
-			.AddGroup(B_HORIZONTAL)
-				.SetInsets(B_USE_WINDOW_SPACING, 0, B_USE_WINDOW_SPACING, B_USE_WINDOW_SPACING)
+				.Add(fTabs)
 				.Add(fStatus)
-				.AddGlue()
-				.Add(fStart)
 			.End();
-		SetDefaultButton(fStart);
+		sWindow = BMessenger(this);
+		CenterOnScreen();
 		LoadSettings();
+		FillMissions();
+		FillCampaign();
+		FillRecordings();
 	}
 
-	BMenuField* popup(const char* label, const char* const* items, int count, int marked)
+	// ── match ──
+	BView* MatchTab()
+	{
+		BGroupView* v = new BGroupView("Match", B_VERTICAL);
+		fOpponent = Popup("Opponent:", kOpponents, 6, 4, 0);
+		fHogs = new BSpinner("hogs", "Hedgehogs per team:", NULL);
+		fHogs->SetRange(1, 8);
+		fHogs->SetValue(4);
+		std::vector<std::string> names;
+		for (const Scheme& s : kSchemes)
+			names.push_back(s.name);
+		fScheme = Popup("Scheme:", names, 0, kMsgScheme);
+		names.clear();
+		for (const auto& w : kWeapons)
+			names.push_back(w.name);
+		fWeapons = Popup("Weapons:", names, 0, 0);
+		fStyles = list_dir("Scripts/Multiplayer", ".lua", false);
+		names = {"Normal"};
+		for (const std::string& s : fStyles)
+			names.push_back(spaced(s));
+		fStyle = Popup("Style:", names, 0, kMsgStyle);
+		fStyle->Menu()->AddItem(new BSeparatorItem(), 1);
+
+		names.assign(kGenerated, kGenerated + 4);
+		for (const std::string& m : list_dir("Maps", NULL, true)) {
+			BPath dir(gDataDir.Path(), ("Maps/" + m).c_str());
+			// missions (with a map.lua) and the test map aren't for a match
+			if (m != "test" && BEntry(BPath(dir.Path(), "map.cfg").Path()).Exists()
+				&& !BEntry(BPath(dir.Path(), "map.lua").Path()).Exists())
+				fMaps.push_back(m);
+		}
+		for (const std::string& m : fMaps)
+			names.push_back(spaced(m));
+		fMap = Popup("Map:", names, 0, kMsgMap);
+		fMap->Menu()->AddItem(new BSeparatorItem(), 4);
+
+		names.clear();
+		int nature = 0;
+		for (const std::string& t : list_dir("Themes", NULL, true)) {
+			std::string cfg = ini_value(("Themes/" + t + "/theme.cfg").c_str(), "hidden ");
+			if (cfg.find("true") != std::string::npos)
+				continue;
+			if (t == "Nature")
+				nature = names.size();
+			names.push_back(t);
+		}
+		fTheme = Popup("Theme:", names, nature, 0);
+		BButton* start = new BButton("Start game", new BMessage(kMsgStartMatch));
+		BLayoutItem* hogsField = fHogs->CreateTextViewLayoutItem();
+		hogsField->SetExplicitMaxSize(BSize(90, B_SIZE_UNSET));
+		hogsField->SetExplicitAlignment(BAlignment(B_ALIGN_LEFT, B_ALIGN_VERTICAL_CENTER));
+
+		BLayoutBuilder::Group<>(v)
+			.SetInsets(B_USE_DEFAULT_SPACING)
+			.AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
+				.AddMenuField(fOpponent, 0, 0)
+				.Add(fHogs->CreateLabelLayoutItem(), 0, 1)
+				.Add(hogsField, 1, 1)
+				.AddMenuField(fScheme, 0, 2)
+				.AddMenuField(fWeapons, 0, 3)
+				.AddMenuField(fStyle, 0, 4)
+				.AddMenuField(fMap, 0, 5)
+				.AddMenuField(fTheme, 0, 6)
+				.AddGlue(2, 0)
+				.SetColumnWeight(2, 10)
+			.End()
+			.AddGlue()
+			.AddGroup(B_HORIZONTAL)
+				.AddGlue()
+				.Add(start)
+			.End();
+		return v;
+	}
+
+	BMenuField* Popup(const char* label, const std::vector<std::string>& items, int marked, uint32 what)
 	{
 		BPopUpMenu* menu = new BPopUpMenu("");
-		for (int i = 0; i < count; i++)
-			menu->AddItem(new BMenuItem(items[i], NULL));
-		if (count)
-			menu->ItemAt(marked < count ? marked : 0)->SetMarked(true);
+		for (const std::string& s : items)
+			menu->AddItem(new BMenuItem(s.c_str(), what ? new BMessage(what) : NULL));
+		if (BMenuItem* item = menu->ItemAt(marked))
+			item->SetMarked(true);
 		return new BMenuField(label, menu);
 	}
 
-	static int marked(BMenuField* f) { return f->Menu()->IndexOf(f->Menu()->FindMarked()); }
+	BMenuField* Popup(const char* label, const char* const* items, int count, int marked, uint32 what)
+	{
+		return Popup(label, std::vector<std::string>(items, items + count), marked, what);
+	}
 
-	static void mark(BMenuField* f, const char* label)
+	static int Marked(BMenuField* f)
+	{
+		int i = f->Menu()->IndexOf(f->Menu()->FindMarked());
+		// separators count as items; report the index among the real items
+		for (int j = 0; j < i; j++)
+			if (dynamic_cast<BSeparatorItem*>(f->Menu()->ItemAt(j)))
+				i--;
+		return i;
+	}
+
+	static std::string MarkedLabel(BMenuField* f)
+	{
+		BMenuItem* item = f->Menu()->FindMarked();
+		return item ? item->Label() : "";
+	}
+
+	static void Mark(BMenuField* f, const char* label)
 	{
 		if (BMenuItem* item = f->Menu()->FindItem(label))
 			item->SetMarked(true);
 	}
 
-	BPath SettingsPath() { return BPath(sUserDir.Path(), "launcher_settings"); }
+	std::string MatchConfig()
+	{
+		const Scheme& s = kSchemes[std::max(Marked(fScheme), 0)];
+		std::string ammo = kWeapons[std::max(Marked(fWeapons), 0)].ammo;
+		std::string buf;
+		add(buf, "TL");
+		int style = Marked(fStyle);
+		if (style > 0)
+			add(buf, "escript Scripts/Multiplayer/" + fStyles[style - 1] + ".lua");
+		int map = Marked(fMap);
+		std::string theme = MarkedLabel(fTheme);
+		if (map >= 4) {
+			std::string name = fMaps[map - 4];
+			add(buf, "emap " + name);
+			std::vector<std::string> cfg = read_lines(("Maps/" + name + "/map.cfg").c_str());
+			if (!cfg.empty())
+				theme = cfg[0];
+		}
+		add(buf, "etheme " + theme);
+		add(buf, "eseed " + new_seed());
+		uint32 flags = 0;
+		for (int i = 1; i <= 25; i++)
+			if (s.v[i])
+				flags |= kFlagBits[i];
+		add(buf, "e$gmflags " + std::to_string(flags));
+		for (int i = 0; i < 18; i++)
+			add(buf, std::string("e$") + kNumbers[i].cmd + " " + std::to_string(s.v[26 + i] * kNumbers[i].scale));
+		int gen = map >= 4 ? 0 : kGeneratedGen[map];
+		add(buf, "e$template_filter " + std::to_string(gen == 0 ? 1 << (rand() % 3) : rand() % 6));
+		add(buf, "e$feature_size " + std::to_string(rand() % 16 + 6));
+		add(buf, "e$mapgen " + std::to_string(gen));
+		add(buf, std::string("e$scriptparam ") + (s.scriptparam ? s.scriptparam : ""));
+
+		std::vector<TeamInfo> teams = {fTeam};
+		int opp = Marked(fOpponent);
+		TeamInfo other;
+		other.name = opp < 5 ? "Computer" : "Second Player";
+		other.difficulty = opp < 5 ? opp + 1 : 0;
+		other.color = 0x4980c1;
+		other.flag = "cm_binary";
+		for (int h = 0; h < 8; h++) {
+			other.hogs[h] = pick(fNames, "Hog " + std::to_string(h + 1));
+			other.hats[h] = pick(fHats, "NoHat");
+		}
+		teams.push_back(other);
+		size_t n = ammo.size() / 4;
+		for (const TeamInfo& t : teams) {
+			add(buf, "eammloadt " + ammo.substr(0, n));
+			add(buf, "eammprob " + ammo.substr(n, n));
+			add(buf, "eammdelay " + ammo.substr(2 * n, n));
+			add(buf, "eammreinf " + ammo.substr(3 * n, n));
+			if (s.v[15] || !s.v[21])	// shared ammo, or not per-hog ammo
+				add(buf, "eammstore");
+			buf += team_config(t, fHogs->Value(), s.v[28], false);
+		}
+		return buf;
+	}
+
+	// ── missions ──
+	BView* MissionsTab()
+	{
+		BGroupView* v = new BGroupView("Missions", B_VERTICAL);
+		fMissionKind = Popup("Kind:", kMissionKindLabels, 3, 0, kMsgMissionKind);
+		BScrollView *ls, *ds;
+		fMissionList = list_view(&ls, kMsgMissionSel, kMsgStartMission);
+		fMissionText = description_view(&ds);
+		fMissionThumb = new Thumbnail;
+		BLayoutBuilder::Group<>(v)
+			.SetInsets(B_USE_DEFAULT_SPACING)
+			.AddGroup(B_HORIZONTAL)
+				.Add(fMissionKind)
+				.AddGlue()
+			.End()
+			.Add(ls)
+			.AddGroup(B_HORIZONTAL)
+				.Add(fMissionThumb)
+				.Add(ds)
+			.End()
+			.AddGroup(B_HORIZONTAL)
+				.AddGlue()
+				.Add(new BButton("Start mission", new BMessage(kMsgStartMission)))
+			.End();
+		return v;
+	}
+
+	std::string MissionKind() { return kMissionKinds[std::max(Marked(fMissionKind), 0)]; }
+
+	// PageTraining: order.cfg first, then the rest
+	void FillMissions()
+	{
+		std::string kind = MissionKind();
+		fMissionIds = read_lines(("Missions/" + kind + "/order.cfg").c_str());
+		for (const std::string& m : list_dir(("Missions/" + kind).c_str(), ".lua", false))
+			if (std::find(fMissionIds.begin(), fMissionIds.end(), m) == fMissionIds.end())
+				fMissionIds.push_back(m);
+		clear_list(fMissionList);
+		for (const std::string& id : fMissionIds) {
+			std::string name = ini_value("Locale/missions_en.txt", id + ".name", spaced(id));
+			if (get_progress("Mission " + id + "/Won") == "true")
+				name += "  ✓";
+			fMissionList->AddItem(new BStringItem(name.c_str()));
+		}
+		fMissionList->Select(0);
+	}
+
+	void ShowMission()
+	{
+		int i = fMissionList->CurrentSelection();
+		if (i < 0)
+			return;
+		const std::string& id = fMissionIds[i];
+		fMissionText->SetText(ini_value("Locale/missions_en.txt", id + ".desc", "No description available.").c_str());
+		std::string pic = "Graphics/Missions/" + MissionKind() + "/" + id + "@2x.png";
+		fMissionThumb->SetPicture(pic);
+	}
+
+	// ── campaigns ──
+	BView* CampaignsTab()
+	{
+		BGroupView* v = new BGroupView("Campaigns", B_VERTICAL);
+		fCampaigns = list_dir("Missions/Campaign", NULL, true);
+		std::vector<std::string> names;
+		for (const std::string& c : fCampaigns)
+			names.push_back(ini_value("Locale/campaigns_en.txt", c + ".name", spaced(c)));
+		fCampaign = Popup("Campaign:", names, 0, kMsgCampaign);
+		BScrollView *ls, *ds;
+		fCampaignList = list_view(&ls, kMsgCampaignSel, kMsgStartCampaign);
+		fCampaignText = description_view(&ds);
+		fCampaignThumb = new Thumbnail;
+		BLayoutBuilder::Group<>(v)
+			.SetInsets(B_USE_DEFAULT_SPACING)
+			.AddGroup(B_HORIZONTAL)
+				.Add(fCampaign)
+				.AddGlue()
+			.End()
+			.Add(ls)
+			.AddGroup(B_HORIZONTAL)
+				.Add(fCampaignThumb)
+				.Add(ds)
+			.End()
+			.AddGroup(B_HORIZONTAL)
+				.AddGlue()
+				.Add(new BButton("Start mission", new BMessage(kMsgStartCampaign)))
+			.End();
+		return v;
+	}
+
+	std::string Campaign()
+	{
+		int i = Marked(fCampaign);
+		return i >= 0 && i < (int)fCampaigns.size() ? fCampaigns[i] : "";
+	}
+
+	// campaign.cpp getCampMissionList: the missions the saved progress unlocks, newest first
+	void FillCampaign()
+	{
+		std::string camp = Campaign();
+		std::string ini = "Missions/Campaign/" + camp + "/campaign.ini";
+		std::string key = "Campaign " + camp + "/";
+		int progress = atoi(get_progress(key + "Progress").c_str());
+		int unlocked = atoi(get_progress(key + "UnlockedMissions").c_str());
+		std::vector<int> missions;
+		if (unlocked == 0)
+			for (int i = progress + 1; i > 0; i--)
+				missions.push_back(i);
+		else
+			for (int i = 1; i <= unlocked; i++)
+				missions.push_back(atoi(get_progress(key + "Mission" + std::to_string(i)).c_str()));
+		fCampaignScripts.clear();
+		clear_list(fCampaignList);
+		for (int m : missions) {
+			std::string script = ini_value(ini.c_str(), "Mission " + std::to_string(m) + "/Script");
+			if (script.empty())
+				continue;
+			std::string base = script.substr(0, script.rfind(".lua"));
+			std::string name = ini_value("Locale/campaigns_en.txt", camp + "-" + base + ".name",
+				ini_value(ini.c_str(), "Mission " + std::to_string(m) + "/Name"));
+			fCampaignScripts.push_back(script);
+			fCampaignList->AddItem(new BStringItem(name.c_str()));
+		}
+		fCampaignList->Select(0);
+	}
+
+	void ShowCampaignMission()
+	{
+		int i = fCampaignList->CurrentSelection();
+		if (i < 0)
+			return;
+		std::string camp = Campaign();
+		std::string base = fCampaignScripts[i].substr(0, fCampaignScripts[i].rfind(".lua"));
+		fCampaignText->SetText(ini_value("Locale/campaigns_en.txt", camp + "-" + base + ".desc",
+			"No description available.").c_str());
+		fCampaignThumb->SetPicture("Graphics/Missions/Campaign/" + camp + "/" + base + "@2x.png");
+	}
+
+	// ── recordings ──
+	BView* RecordingsTab()
+	{
+		BGroupView* v = new BGroupView("Recordings", B_VERTICAL);
+		BScrollView* ls;
+		fRecordingList = list_view(&ls, kMsgRecordingSel, kMsgPlayRecording);
+		fPlay = new BButton("Play", new BMessage(kMsgPlayRecording));
+		fTrash = new BButton("Move to Trash", new BMessage(kMsgTrashRecording));
+		BLayoutBuilder::Group<>(v)
+			.SetInsets(B_USE_DEFAULT_SPACING)
+			.Add(new BStringView("hint", "Interrupted games are kept as saved games, finished ones as demos."))
+			.Add(ls)
+			.AddGroup(B_HORIZONTAL)
+				.Add(fTrash)
+				.AddGlue()
+				.Add(fPlay)
+			.End();
+		return v;
+	}
+
+	void FillRecordings()
+	{
+		fRecordings.clear();
+		clear_list(fRecordingList);
+		for (const char* kind : {"Saves", "Demos"}) {
+			std::vector<std::string> files = list_dir(kind, NULL, false, true);
+			for (auto f = files.rbegin(); f != files.rend(); ++f) {	// newest first
+				std::string label = std::string(kind[0] == 'S' ? "Saved game, " : "Demo, ") + *f;
+				label = label.substr(0, label.find('.'));
+				fRecordings.push_back(std::string(kind) + "/" + *f);
+				fRecordingList->AddItem(new BStringItem(label.c_str()));
+			}
+		}
+		fRecordingList->Select(0);
+		bool any = !fRecordings.empty();
+		fPlay->SetEnabled(any);
+		fTrash->SetEnabled(any);
+	}
+
+	// Like Tracker: into the Trash with the attribute it restores from
+	void TrashRecording()
+	{
+		int i = fRecordingList->CurrentSelection();
+		if (i < 0)
+			return;
+		BPath path(gUserDir.Path(), fRecordings[i].c_str());
+		BPath trash;
+		BEntry entry(path.Path());
+		if (find_directory(B_TRASH_DIRECTORY, &trash) == B_OK) {
+			BNode(&entry).WriteAttr("_trk/original_path", B_STRING_TYPE, 0, path.Path(), strlen(path.Path()) + 1);
+			BDirectory dir(trash.Path());
+			if (entry.MoveTo(&dir) != B_OK)
+				(new BAlert("Hedgewars", "Couldn't move the recording to the Trash.", "OK"))->Go(NULL);
+		}
+		FillRecordings();
+	}
+
+	// ── team ──
+	BView* TeamTab()
+	{
+		BGroupView* v = new BGroupView("Team", B_VERTICAL);
+		fTeamName = new BTextControl("Team name:", fTeam.name.c_str(), NULL);
+		fFlag = Popup("Flag:", list_dir("Graphics/Flags", ".png", false), 0, 0);
+		fGrave = Popup("Grave:", list_dir("Graphics/Graves", ".png", false), 0, 0);
+		fFort = Popup("Fort:", list_dir("Forts", "L.png", false), 0, 0);
+		std::vector<std::string> voices;
+		for (const std::string& d : list_dir("Sounds/voices", NULL, true))
+			voices.push_back(d);
+		fVoice = Popup("Voice:", voices, 0, 0);
+		std::vector<std::string> hats = {"NoHat"};
+		for (const std::string& h : fHats)
+			if (h != "NoHat")
+				hats.push_back(h);
+
+		BGridLayout* grid;
+		BLayoutBuilder::Group<>(v)
+			.SetInsets(B_USE_DEFAULT_SPACING)
+			.AddGroup(B_HORIZONTAL, B_USE_BIG_SPACING)
+				.AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
+					.AddTextControl(fTeamName, 0, 0)
+					.AddMenuField(fFlag, 0, 1)
+					.AddMenuField(fGrave, 0, 2)
+					.AddMenuField(fFort, 0, 3)
+					.AddMenuField(fVoice, 0, 4)
+					.AddGlue(0, 5)
+				.End()
+				.AddGrid(B_USE_SMALL_SPACING, B_USE_SMALL_SPACING)
+					.GetLayout(&grid)
+				.End()
+			.End()
+			.AddGlue();
+		for (int h = 0; h < 8; h++) {
+			fHogName[h] = new BTextControl(("Hedgehog " + std::to_string(h + 1) + ":").c_str(), "", NULL);
+			fHat[h] = Popup("", hats, 0, 0);
+			fHat[h]->SetDivider(0);
+			grid->AddItem(fHogName[h]->CreateLabelLayoutItem(), 0, h);
+			grid->AddItem(fHogName[h]->CreateTextViewLayoutItem(), 1, h);
+			grid->AddView(fHat[h], 2, h);
+		}
+		return v;
+	}
+
+	void TeamToFields()
+	{
+		fTeamName->SetText(fTeam.name.c_str());
+		Mark(fFlag, fTeam.flag.c_str());
+		Mark(fGrave, fTeam.grave.c_str());
+		Mark(fFort, fTeam.fort.c_str());
+		Mark(fVoice, fTeam.voice.c_str());
+		for (int h = 0; h < 8; h++) {
+			fHogName[h]->SetText(fTeam.hogs[h].c_str());
+			Mark(fHat[h], fTeam.hats[h].empty() ? "NoHat" : fTeam.hats[h].c_str());
+		}
+	}
+
+	void FieldsToTeam()
+	{
+		fTeam.name = fTeamName->Text()[0] ? fTeamName->Text() : "Haiku Hogs";
+		fTeam.flag = MarkedLabel(fFlag);
+		fTeam.grave = MarkedLabel(fGrave);
+		fTeam.fort = MarkedLabel(fFort);
+		fTeam.voice = MarkedLabel(fVoice);
+		for (int h = 0; h < 8; h++) {
+			fTeam.hogs[h] = fHogName[h]->Text();
+			fTeam.hats[h] = MarkedLabel(fHat[h]);
+		}
+	}
+
+	// ── settings ──
+	BPath SettingsPath() { return BPath(gUserDir.Path(), "launcher_settings"); }
 
 	void LoadSettings()
 	{
 		BFile file(SettingsPath().Path(), B_READ_ONLY);
 		BMessage s;
-		if (s.Unflatten(&file) != B_OK)
-			return;
-		BRect frame;
-		if (s.FindRect("frame", &frame) == B_OK) {
-			MoveTo(frame.LeftTop());
-			MoveOnScreen();
-		}
+		bool loaded = s.Unflatten(&file) == B_OK;
 		const char* str;
-		if (s.FindString("team", &str) == B_OK) fTeam->SetText(str);
-		if (s.FindString("opponent", &str) == B_OK) mark(fOpponent, str);
-		if (s.FindString("map", &str) == B_OK) mark(fMap, str);
-		if (s.FindString("theme", &str) == B_OK) mark(fTheme, str);
-		int32 v;
-		if (s.FindInt32("hogs", &v) == B_OK) fHogs->SetValue(v);
-		bool b;
-		if (s.FindBool("fullscreen", &b) == B_OK) fFullscreen->SetValue(b);
+		for (int h = 0; h < 8; h++)
+			fTeam.hogs[h] = pick(fNames, "Hog " + std::to_string(h + 1));
+		if (loaded) {
+			BRect frame;
+			if (s.FindRect("frame", &frame) == B_OK) {
+				MoveTo(frame.LeftTop());
+				MoveOnScreen();
+			}
+			struct { const char* key; BMenuField* field; } popups[] = {
+				{"opponent", fOpponent}, {"scheme", fScheme}, {"weapons", fWeapons},
+				{"style", fStyle}, {"map", fMap}, {"theme", fTheme},
+				{"mission kind", fMissionKind}, {"campaign", fCampaign}};
+			for (const auto& p : popups)
+				if (s.FindString(p.key, &str) == B_OK)
+					Mark(p.field, str);
+			int32 v;
+			if (s.FindInt32("hogs", &v) == B_OK) fHogs->SetValue(v);
+			if (s.FindInt32("tab", &v) == B_OK) fTabs->Select(v);
+			bool b;
+			if (s.FindBool("fullscreen", &b) == B_OK) fFullscreen->SetMarked(b);
+			if (s.FindBool("sound", &b) == B_OK) fSound->SetMarked(b);
+			if (s.FindBool("music", &b) == B_OK) fMusic->SetMarked(b);
+			// the old launcher kept just the team's name
+			if (s.FindString("team", &str) == B_OK) fTeam.name = str;
+			BMessage t;
+			if (s.FindMessage("team", &t) == B_OK) {
+				if (t.FindString("name", &str) == B_OK) fTeam.name = str;
+				if (t.FindString("flag", &str) == B_OK) fTeam.flag = str;
+				if (t.FindString("grave", &str) == B_OK) fTeam.grave = str;
+				if (t.FindString("fort", &str) == B_OK) fTeam.fort = str;
+				if (t.FindString("voice", &str) == B_OK) fTeam.voice = str;
+				for (int h = 0; h < 8; h++) {
+					if (t.FindString("hog", h, &str) == B_OK) fTeam.hogs[h] = str;
+					if (t.FindString("hat", h, &str) == B_OK) fTeam.hats[h] = str;
+				}
+			}
+		}
+		TeamToFields();
+		UpdateThemeField();
 	}
 
 	void SaveSettings()
 	{
+		FieldsToTeam();
 		BMessage s;
 		s.AddRect("frame", Frame());
-		s.AddString("team", fTeam->Text());
-		s.AddString("opponent", fOpponent->Menu()->FindMarked()->Label());
-		s.AddString("map", fMap->Menu()->FindMarked()->Label());
-		if (BMenuItem* t = fTheme->Menu()->FindMarked())
-			s.AddString("theme", t->Label());
+		struct { const char* key; BMenuField* field; } popups[] = {
+			{"opponent", fOpponent}, {"scheme", fScheme}, {"weapons", fWeapons},
+			{"style", fStyle}, {"map", fMap}, {"theme", fTheme},
+			{"mission kind", fMissionKind}, {"campaign", fCampaign}};
+		for (const auto& p : popups)
+			s.AddString(p.key, MarkedLabel(p.field).c_str());
 		s.AddInt32("hogs", fHogs->Value());
-		s.AddBool("fullscreen", fFullscreen->Value());
+		s.AddInt32("tab", fTabs->Selection());
+		s.AddBool("fullscreen", fFullscreen->IsMarked());
+		s.AddBool("sound", fSound->IsMarked());
+		s.AddBool("music", fMusic->IsMarked());
+		BMessage t;
+		t.AddString("name", fTeam.name.c_str());
+		t.AddString("flag", fTeam.flag.c_str());
+		t.AddString("grave", fTeam.grave.c_str());
+		t.AddString("fort", fTeam.fort.c_str());
+		t.AddString("voice", fTeam.voice.c_str());
+		for (int h = 0; h < 8; h++) {
+			t.AddString("hog", fTeam.hogs[h].c_str());
+			t.AddString("hat", fTeam.hats[h].c_str());
+		}
+		s.AddMessage("team", &t);
 		BFile file(SettingsPath().Path(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
 		s.Flatten(&file);
+	}
+
+	// a fixed map brings its own theme
+	void UpdateThemeField() { fTheme->SetEnabled(Marked(fMap) < 4); }
+
+	// recordings can come and go outside the launcher
+	void WindowActivated(bool active) override
+	{
+		if (active)
+			FillRecordings();
 	}
 
 	bool QuitRequested() override
@@ -410,42 +733,125 @@ public:
 		return true;
 	}
 
+	// ── running a game ──
+	void Start(Game* g)
+	{
+		g->fullscreen = fFullscreen->IsMarked();
+		g->sound = fSound->IsMarked();
+		g->music = fMusic->IsMarked();
+		SaveSettings();
+		fStatus->SetText("Game running…");
+		Hide();	// out of the game's way; back when it ends
+		resume_thread(spawn_thread(game_thread, "game", B_NORMAL_PRIORITY, g));
+	}
+
+	std::string MissionConfig(const std::string& script)
+	{
+		FieldsToTeam();
+		std::string buf;
+		add(buf, "TL");
+		buf += team_config(fTeam, 8, 100, true);
+		add(buf, "eseed " + new_seed());
+		add(buf, "escript " + script);
+		return buf;
+	}
+
 	void MessageReceived(BMessage* msg) override
 	{
 		switch (msg->what) {
-			case kMsgStart: {
-				Match* m = new Match;
-				std::string team = fTeam->Text()[0] ? fTeam->Text() : "Haiku Hogs";
-				m->teams.push_back({team, 0, 0xff0204});
-				int opp = marked(fOpponent);
-				if (opp < 5)
-					m->teams.push_back({"Computer", opp + 1, 0x4980c1});
-				else
-					m->teams.push_back({"Second Player", 0, 0x4980c1});
-				m->hogs = fHogs->Value();
-				m->map = marked(fMap);
-				m->theme = fTheme->Menu()->FindMarked() ? fTheme->Menu()->FindMarked()->Label() : "Nature";
-				m->fullscreen = fFullscreen->Value();
-				SaveSettings();
-				fStart->SetEnabled(false);
-				fStatus->SetText("Game running…");
-				Hide();	// out of the game's way; back when it ends
-				thread_id t = spawn_thread(game_thread, "game", B_NORMAL_PRIORITY, m);
-				resume_thread(t);
+			case kMsgStartMatch: {
+				FieldsToTeam();
+				Game* g = new Game;
+				g->config = MatchConfig();
+				Start(g);
+				break;
+			}
+			case kMsgStartMission: {
+				int i = fMissionList->CurrentSelection();
+				if (i < 0)
+					break;
+				Game* g = new Game;
+				g->config = MissionConfig("Missions/" + MissionKind() + "/" + fMissionIds[i] + ".lua");
+				g->varPrefix = "Mission " + fMissionIds[i] + "/";
+				Start(g);
+				break;
+			}
+			case kMsgStartCampaign: {
+				int i = fCampaignList->CurrentSelection();
+				if (i < 0)
+					break;
+				Game* g = new Game;
+				g->config = MissionConfig("Missions/Campaign/" + Campaign() + "/" + fCampaignScripts[i]);
+				g->varPrefix = "Campaign " + Campaign() + "/";
+				Start(g);
+				break;
+			}
+			case kMsgPlayRecording: {
+				int i = fRecordingList->CurrentSelection();
+				if (i < 0)
+					break;
+				BFile f(BPath(gUserDir.Path(), fRecordings[i].c_str()).Path(), B_READ_ONLY);
+				off_t size = 0;
+				f.GetSize(&size);
+				Game* g = new Game;
+				g->replay.resize(size);
+				if (size <= 0 || f.Read(&g->replay[0], size) != size) {
+					delete g;
+					(new BAlert("Hedgewars", "Couldn't read the recording.", "OK"))->Go(NULL);
+					break;
+				}
+				Start(g);
+				break;
+			}
+			case kMsgTrashRecording: TrashRecording(); break;
+			case kMsgScheme: {
+				// as in the Qt frontend, a scheme picks the weapon set of the same name
+				Mark(fWeapons, MarkedLabel(fScheme).c_str());
+				break;
+			}
+			case kMsgStyle: {
+				// a style's .cfg names its scheme and weapons ("*": any)
+				int i = Marked(fStyle);
+				if (i > 0) {
+					std::vector<std::string> cfg = read_lines(("Scripts/Multiplayer/" + fStyles[i - 1] + ".cfg").c_str());
+					if (cfg.size() > 0 && cfg[0] != "*") Mark(fScheme, spaced(cfg[0]).c_str());
+					if (cfg.size() > 1 && cfg[1] != "*") Mark(fWeapons, spaced(cfg[1]).c_str());
+				}
+				break;
+			}
+			case kMsgMap: UpdateThemeField(); break;
+			case kMsgMissionKind: FillMissions(); break;
+			case kMsgMissionSel: ShowMission(); break;
+			case kMsgCampaign: FillCampaign(); break;
+			case kMsgCampaignSel: ShowCampaignMission(); break;
+			case kMsgToggle: {
+				BMenuItem* item;
+				if (msg->FindPointer("source", (void**)&item) == B_OK)
+					item->SetMarked(!item->IsMarked());
 				break;
 			}
 			case kMsgGameOver: {
 				if (IsHidden())
 					Show();
 				Activate();
-				fStart->SetEnabled(true);
-				fStatus->SetText("");
-				const char* error;
-				if (msg->FindString("error", &error) == B_OK && error[0]) {
-					BAlert* a = new BAlert("Hedgewars", error, "OK", NULL, NULL,
-						B_WIDTH_AS_USUAL, B_STOP_ALERT);
-					a->Go(NULL);
-				}
+				const char *error, *engineError, *saved;
+				msg->FindString("error", &error);
+				msg->FindString("engine error", &engineError);
+				msg->FindString("saved", &saved);
+				std::string status;
+				if (saved[0])
+					status = strstr(saved, "/Saves/") ? "Kept as a saved game in Recordings."
+						: "Kept as a demo in Recordings.";
+				fStatus->SetText(status.c_str());
+				FillMissions();
+				FillCampaign();
+				FillRecordings();
+				std::string text = error;
+				if (text.empty() && engineError[0])
+					text = std::string("The game engine stopped with an error:\n\n") + engineError;
+				if (!text.empty())
+					(new BAlert("Hedgewars", text.c_str(), "OK", NULL, NULL,
+						B_WIDTH_AS_USUAL, B_STOP_ALERT))->Go(NULL);
 				break;
 			}
 			default:
@@ -455,21 +861,40 @@ public:
 
 	static int32 game_thread(void* data)
 	{
-		Match* m = (Match*)data;
+		Game* g = (Game*)data;
+		Outcome o = run_game(*g);
+		delete g;
 		BMessage done(kMsgGameOver);
-		done.AddString("error", run_game(*m).c_str());
-		delete m;
-		be_app->WindowAt(0)->PostMessage(&done);
+		done.AddString("error", o.error.c_str());
+		done.AddString("engine error", o.engineError.c_str());
+		done.AddString("saved", o.saved.c_str());
+		sWindow.SendMessage(&done);
 		return 0;
 	}
 
 private:
-	BTextControl* fTeam;
-	BMenuField *fOpponent, *fMap, *fTheme;
-	BSpinner* fHogs;
-	BCheckBox* fFullscreen;
-	BButton* fStart;
+	TeamInfo fTeam;
+	std::vector<std::string> fHats, fNames, fStyles, fMaps, fMissionIds, fCampaigns,
+		fCampaignScripts, fRecordings;
+	BTabView* fTabs;
 	BStringView* fStatus;
+	BMenuItem *fFullscreen, *fSound, *fMusic;
+	BMenuField *fOpponent, *fScheme, *fWeapons, *fStyle, *fMap, *fTheme;
+	BSpinner* fHogs;
+	BMenuField* fMissionKind;
+	BListView* fMissionList;
+	BTextView* fMissionText;
+	Thumbnail* fMissionThumb;
+	BMenuField* fCampaign;
+	BListView* fCampaignList;
+	BTextView* fCampaignText;
+	Thumbnail* fCampaignThumb;
+	BListView* fRecordingList;
+	BButton *fPlay, *fTrash;
+	BTextControl* fTeamName;
+	BMenuField *fFlag, *fGrave, *fFort, *fVoice;
+	BTextControl* fHogName[8];
+	BMenuField* fHat[8];
 };
 
 class LauncherApp : public BApplication {
@@ -485,9 +910,7 @@ public:
 			Quit();
 			return;
 		}
-		LauncherWindow* w = new LauncherWindow(BRect(100, 100, 400, 300));
-		w->CenterOnScreen();
-		w->Show();
+		(new LauncherWindow)->Show();
 	}
 
 	void AboutRequested() override

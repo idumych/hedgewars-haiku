@@ -61,11 +61,11 @@ $(APP)/hwengine: $(ENGINE_SRCS) $(OBJ)/config.inc $(LIB)/libhwhaiku.so $(LIB)/li
 		-Fi$(OBJ) -Fuhedgewars -FU$(OBJ) -Fl$(LIB) \
 		-o$(CURDIR)/$@ hedgewars/hwengine.pas
 
-$(APP)/Hedgewars: haiku/launcher/Launcher.cpp haiku/launcher/Hedgewars.rdef frontend-qt6/weapons.h
+$(APP)/Hedgewars: $(wildcard haiku/launcher/*.cpp haiku/launcher/*.h) haiku/launcher/Hedgewars.rdef haiku/launcher/icon.rdef frontend-qt6/weapons.h
 	@mkdir -p $(OBJ)
 	$(CXX) -O2 -g -std=c++17 -Wall -Ifrontend-qt6 -I$(HEADERS)/private/interface -DHW_DATADIR='"$(DATADIR)"' \
-		-o $@ haiku/launcher/Launcher.cpp -lbe -lnetwork
-	rc -o $(OBJ)/Hedgewars.rsrc haiku/launcher/Hedgewars.rdef
+		-o $@ haiku/launcher/*.cpp -lbe -lnetwork -ltranslation
+	rc -o $(OBJ)/Hedgewars.rsrc haiku/launcher/Hedgewars.rdef haiku/launcher/icon.rdef
 	xres -o $@ $(OBJ)/Hedgewars.rsrc
 	mimeset -f $@
 
