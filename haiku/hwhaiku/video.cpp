@@ -29,6 +29,11 @@ static EventFilter sFilter;
 
 void hw_push_event(const SDL_Event& e)
 {
+	static const bool debug = getenv("HWHAIKU_DEBUG") != NULL;
+	if (debug)
+		fprintf(stderr, "hwhaiku event %#x key %d text '%.8s'\n", e.type,
+			e.type == SDL_KEYDOWN || e.type == SDL_KEYUP ? e.key.keysym.scancode : 0,
+			e.type == SDL_TEXTINPUT ? e.text.text : "");
 	SDL_Event copy = e;
 	if (sFilter && !sFilter(&copy))
 		return;
@@ -441,8 +446,10 @@ HW_API void* SDL_CreateWindow(const char* title, int x, int y, int w, int h, Uin
 		sWindow->MoveTo(0, 0);
 		sWindow->ResizeTo(screen.Width(), screen.Height());
 	}
-	if (!(flags & 0x8))	// not SDL_WINDOW_HIDDEN
+	if (!(flags & 0x8)) {	// not SDL_WINDOW_HIDDEN
 		sWindow->Show();
+		sWindow->Activate();	// started from a launcher: take the keyboard
+	}
 	else {
 		sWindow->Hide();
 		sWindow->Show();

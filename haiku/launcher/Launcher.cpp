@@ -429,11 +429,15 @@ public:
 				SaveSettings();
 				fStart->SetEnabled(false);
 				fStatus->SetText("Game running…");
+				Hide();	// out of the game's way; back when it ends
 				thread_id t = spawn_thread(game_thread, "game", B_NORMAL_PRIORITY, m);
 				resume_thread(t);
 				break;
 			}
 			case kMsgGameOver: {
+				if (IsHidden())
+					Show();
+				Activate();
 				fStart->SetEnabled(true);
 				fStatus->SetText("");
 				const char* error;
