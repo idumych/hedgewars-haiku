@@ -17,6 +17,7 @@
 #include "uGearsHedgehog.h"
 #include "uChat.h"
 #include "uRust.h"
+#include "uVideoRec.h"
 static const string255 __str145 = STRINIT("timer_u");
 static const string255 __str144 = STRINIT("gearinfo");
 static const string255 __str143 = STRINIT("-mission");
@@ -768,6 +769,14 @@ void ucommandhandlers_chCapture(string255 (*s))
 void ucommandhandlers_chRecord(string255 (*s))
 {
     UNUSED ((*s));
+    if(flagPrerecording)
+    {
+        uvideorec_StopPreRecording();
+    }
+    else
+    {
+        uvideorec_BeginPreRecording();
+    }
 };
 void ucommandhandlers_chSetMap(string255 (*s))
 {

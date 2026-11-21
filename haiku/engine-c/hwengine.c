@@ -39,6 +39,7 @@
 #include "uVisualGearsHandlers.h"
 #include "uTextures.h"
 #include "uRender.h"
+#include "uVideoRec.h"
 static const string255 __str39 = STRINIT("Preview sent, disconnect");
 static const string255 __str38 = STRINIT("Sending preview...");
 static const string255 __str37 = STRINIT("Freeing resources...");
@@ -167,6 +168,10 @@ boolean DoTimer(LongInt Lag)
     if(!cOnlyStats)
     {
         ustore_SwapBuffers();
+    }
+    if(flagPrerecording)
+    {
+        uvideorec_SaveCameraPosition();
     }
     if(flagMakeCapture)
     {
@@ -353,6 +358,46 @@ void MainLoop()
         uio_IPCCheckSock();
     }
 };
+void RecorderMainLoop()
+{
+    LongInt oldGameTicks;
+    LongInt oldRealTicks;
+    LongInt newGameTicks;
+    LongInt newRealTicks;
+    if(!uvideorec_BeginVideoRecording())
+    {
+        return;
+    }
+    DoTimer(0);
+    DoTimer(0);
+    newGameTicks = 0;
+    newRealTicks = 0;
+    if(!uvideorec_LoadNextCameraPosition(&(newRealTicks), &(newGameTicks)))
+    {
+        return;
+    }
+    fastScrolling = true;
+    ugame_DoGameTick(newGameTicks);
+    fastScrolling = false;
+    oldRealTicks = 0;
+    oldGameTicks = newGameTicks;
+    while(uvideorec_LoadNextCameraPosition(&(newRealTicks), &(newGameTicks)))
+    {
+        uio_IPCCheckSock();
+        RealTicks = newRealTicks;
+        ugame_DoGameTick(newGameTicks - oldGameTicks);
+        if(GameState == gsExit)
+        {
+            break;
+        }
+        uvisualgears_ProcessVisualGears(newRealTicks - oldRealTicks);
+        uworld_DrawWorld(newRealTicks - oldRealTicks);
+        uvideorec_EncodeFrame();
+        oldRealTicks = newRealTicks;
+        oldGameTicks = newGameTicks;
+    }
+    uvideorec_StopVideoRecording();
+};
 void GameRoutine()
 {
     string255 s;
@@ -383,6 +428,11 @@ void GameRoutine()
         return;
     }
     SDL_ShowCursor(SDL_DISABLE);
+    if(GameType == gmtRecord)
+    {
+        ustore_InitOffscreenOpenGL();
+    }
+    else
     {
         if(cFullScreen)
         {
@@ -459,6 +509,11 @@ void GameRoutine()
     {
         return;
     }
+    if(GameType == gmtRecord)
+    {
+        RecorderMainLoop();
+        return;
+    }
     MainLoop();
 };
 void Game()
@@ -492,6 +547,7 @@ void initEverything_1(boolean complete)
     if(complete)
     {
         utextures_initModule();
+        uvideorec_initModule();
         uai_initModule();
         uaimisc_initModule();
         uailandmarks_initModule();
@@ -536,6 +592,7 @@ void freeEverything_1(boolean complete)
         uammos_freeModule();
         urender_freeModule();
         ustore_freeModule();
+        uvideorec_freeModule();
         utextures_freeModule();
         SDL_GL_DeleteContext(SDLGLcontext);
         SDL_DestroyWindow(SDLwindow);

@@ -2,6 +2,7 @@
 #include "hwhaiku.h"
 
 #include <Clipboard.h>
+#include <Locker.h>
 #include <OS.h>
 
 #include <stdarg.h>
@@ -73,6 +74,12 @@ HW_API void* SDL_CreateSemaphore(Uint32 initial)
 HW_API void SDL_DestroySemaphore(void* s) { if (s) delete_sem((sem_id)(intptr_t)s - 1); }
 HW_API int SDL_SemWait(void* s) { return acquire_sem((sem_id)(intptr_t)s - 1) == B_OK ? 0 : -1; }
 HW_API int SDL_SemPost(void* s) { return release_sem((sem_id)(intptr_t)s - 1) == B_OK ? 0 : -1; }
+
+// the engine's log lock, used when recording a video (the recorder logs from the audio thread)
+HW_API void* SDL_CreateMutex() { return new BLocker("hw mutex"); }
+HW_API void SDL_DestroyMutex(void* m) { delete (BLocker*)m; }
+HW_API int SDL_LockMutex(void* m) { return ((BLocker*)m)->Lock() ? 0 : -1; }
+HW_API int SDL_UnlockMutex(void* m) { ((BLocker*)m)->Unlock(); return 0; }
 
 // ── RWops ──
 HW_API SDL_RWops* SDL_AllocRW() { return (SDL_RWops*)calloc(1, sizeof(SDL_RWops)); }

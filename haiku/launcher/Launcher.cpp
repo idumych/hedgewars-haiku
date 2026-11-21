@@ -36,6 +36,7 @@
 
 #include "Game.h"
 #include "Stats.h"
+#include "Videos.h"
 #include "schemes.h"	// generated from frontend-qt6/model/gameSchemeModel.cpp
 #include "weapons.h"	// frontend-qt6
 
@@ -198,6 +199,8 @@ public:
 		fTabs->AddTab(MissionsTab());
 		fTabs->AddTab(CampaignsTab());
 		fTabs->AddTab(RecordingsTab());
+		fTabs->AddTab(fVideos = new VideosView);
+		fDefault[4] = fVideos->PlayButton();
 		fTabs->AddTab(TeamTab());
 		fTabs->SetBorder(B_NO_BORDER);
 		fStatus = new BStringView("status", "");
@@ -578,21 +581,13 @@ public:
 		fTrash->SetEnabled(any);
 	}
 
-	// Like Tracker: into the Trash with the attribute it restores from
-	void TrashRecording()
+		void TrashRecording()
 	{
 		int i = fRecordingList->CurrentSelection();
 		if (i < 0)
 			return;
-		BPath path(gUserDir.Path(), fRecordings[i].c_str());
-		BPath trash;
-		BEntry entry(path.Path());
-		if (find_directory(B_TRASH_DIRECTORY, &trash) == B_OK) {
-			BNode(&entry).WriteAttr("_trk/original_path", B_STRING_TYPE, 0, path.Path(), strlen(path.Path()) + 1);
-			BDirectory dir(trash.Path());
-			if (entry.MoveTo(&dir) != B_OK)
-				(new BAlert("Hedgewars", "Could not move the recording to the Trash.", "OK"))->Go(NULL);
-		}
+		if (!move_to_trash(BPath(gUserDir.Path(), fRecordings[i].c_str()).Path()))
+			(new BAlert("Hedgewars", "Could not move the recording to the Trash.", "OK"))->Go(NULL);
 		FillRecordings();
 	}
 
@@ -763,8 +758,10 @@ public:
 	// recordings can come and go outside the launcher
 	void WindowActivated(bool active) override
 	{
-		if (active)
+		if (active) {
 			FillRecordings();
+			fVideos->Fill();
+		}
 	}
 
 	bool QuitRequested() override
@@ -862,7 +859,7 @@ public:
 			case kMsgMap: UpdateThemeField(); break;
 			case kMsgTab: {
 				int i = fTabs->Selection();
-				SetDefaultButton(i >= 0 && i < 4 ? fDefault[i] : NULL);	// the Team tab has none
+				SetDefaultButton(i >= 0 && i < 5 ? fDefault[i] : NULL);	// the Team tab has none
 				break;
 			}
 			case kMsgMissionKind: FillMissions(); break;
@@ -897,6 +894,12 @@ public:
 					stats.push_back(stat);
 				if (msg->GetBool("finished"))
 					show_stats(stats, Frame());
+				const void* record;
+				ssize_t recordSize;
+				if (msg->FindData("record", B_RAW_TYPE, &record, &recordSize) == B_OK
+					&& fVideos->StartEncoding(std::string((const char*)record, recordSize)) > 0)
+					fStatus->SetText((status + (status.empty() ? "" : " ")
+						+ "The video is being made in Videos.").c_str());
 				std::string text = error;
 				if (text.empty() && engineError[0])
 					text = std::string("The game engine stopped with an error:\n\n") + engineError;
@@ -920,6 +923,7 @@ public:
 		done.AddString("engine error", o.engineError.c_str());
 		done.AddString("saved", o.saved.c_str());
 		done.AddBool("finished", o.finished);
+		done.AddData("record", B_RAW_TYPE, o.record.data(), o.record.size());
 		for (const std::string& s : o.stats)
 			done.AddString("stat", s.c_str());
 		sWindow.SendMessage(&done);
@@ -931,6 +935,7 @@ private:
 	std::vector<std::string> fHats, fNames, fStyles, fMaps, fMissionIds, fCampaigns,
 		fCampaignScripts, fRecordings;
 	BTabView* fTabs;
+	VideosView* fVideos;
 	BStringView* fStatus;
 	BMenuItem *fFullscreen, *fSound, *fMusic;
 	BMenuField *fOpponent, *fScheme, *fWeapons, *fStyle, *fMap, *fTheme;
@@ -945,7 +950,7 @@ private:
 	Thumbnail* fCampaignThumb;
 	BListView* fRecordingList;
 	BButton *fPlay, *fTrash;
-	BButton* fDefault[4] = {};
+	BButton* fDefault[5] = {};
 	BTextControl* fTeamName;
 	BMenuField *fFlag, *fGrave, *fFort, *fVoice;
 	BTextControl* fHogName[8];

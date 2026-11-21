@@ -12,6 +12,7 @@ SDL2, SDL_ttf, SDL_mixer, SDL_image and SDL_net entry points that
 | Sound and music | `BMediaFile` decoding, mixed in a `BSoundPlayer` |
 | Joysticks | `BJoystick` |
 | Link to the launcher | POSIX sockets |
+| Video encoding | upstream's `avwrapper` on the system's ffmpeg 6 (the libraries Haiku's media plugin uses) |
 
 The engine is compiled from C: upstream's pas2c converts `hedgewars/*.pas`
 to `engine-c/` (with `tools/gen-engine-c.sh`, on a system with GHC), and
@@ -23,6 +24,13 @@ Lua tests on both and fails on any difference in their output. Four small
 changes let pas2c handle this engine version: `uConsts`' initialization
 section becomes a procedure under `PAS2C`, `Int8`/`PtrUInt` are added to
 pas2c's types, and pas2c imports `Control.Monad` (needed with newer GHC).
+For video recording, two fixes to pas2c's runtime (`fileio.c`): `fileSize`
+seeked to the end and stayed there, and `eof` was true only after a failed
+read; and `avwrapper.c` converts the game's sound to the sample format and
+rate the encoder takes (AAC, Opus), and uses a named channel layout.
+Haiku's Media Kit was tried first for encoding: on R1/beta6 its writer
+fails on every audio track (AAC and AC-3 don't open, FLAC and PCM writes
+fail), so the engine uses ffmpeg directly.
 
 A native launcher (`launcher/`) replaces the Qt
 frontend's local pages, in tabs:
@@ -38,6 +46,10 @@ frontend's local pages, in tabs:
 - **Recordings**: interrupted games are kept as saved games and finished
   ones as demos, the way the Qt frontend records them; play them again or
   move them to the Trash
+- **Videos**: press R in a game to start and stop recording; after the game a
+  second engine replays the recorded stretch off screen and encodes it to
+  `Videos/` (mp4: MPEG-4 video, AAC sound, 1280×720, 30 frames/s). The list
+  shows each video's picture and map; Play opens it in MediaPlayer
 - **Team**: name, flag, grave, fort, voice, hedgehog names and hats
 
 Settings, the team, recordings and mission progress live in
@@ -47,7 +59,7 @@ Settings, the team, recordings and mission progress live in
 
 On Haiku R1/beta6 (x86_64), from the top of the tree (the package also runs on Renku OS):
 
-    pkgman install llvm19_clang mesa_devel glu_devel rust_bin
+    pkgman install llvm19_clang mesa_devel glu_devel ffmpeg6_devel rust_bin
     make -f haiku/Makefile                 # haiku/build/Hedgewars/
     make -f haiku/Makefile compare         # C engine against Pascal (needs fpc)
     sh haiku/package/build-hpkg.sh         # haiku/build/hedgewars-*.hpkg
@@ -76,7 +88,8 @@ and statistics code on any system, and on Haiku also the launcher's progress fil
 | `.hpkg` | installs and plays: app in `apps/Hedgewars`, data in `data/hedgewars`, Deskbar entry |
 | Renku OS (x86_64, build00073, installed to disk in QEMU) | the same `.hpkg`, installed in the home folder: launcher, a match, sound |
 | Joysticks | written, not tested (no joystick in the VM) |
-| Scheme and weapon set editors, video recording, network play | not in the launcher (the predefined schemes and weapon sets are) |
+| Video recording | works: a clip recorded with R in a match became an mp4 that MediaPlayer plays with sound; the format, size and frame rate are fixed |
+| Scheme and weapon set editors, network play | not in the launcher (the predefined schemes and weapon sets are) |
 | App icon | HVIF, from `tools/make-icon.py` |
 | arm64 | not built |
 

@@ -6,6 +6,7 @@
 #include <Path.h>
 #include <SupportDefs.h>
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -35,6 +36,9 @@ struct Game {
 	std::string replay;		// a recording, sent as soon as the engine connects
 	std::string varPrefix;	// "Mission X/" or "Campaign Y/": where script variables live
 	bool fullscreen = false, sound = true, music = true;
+	// set: render the replay off screen into VideoTemp/<videoPrefix>.<format> (HWRecorder)
+	std::string videoPrefix;
+	std::function<void(float)> progress;	// 0..1, from the engine's thread
 };
 
 struct Outcome {
@@ -43,9 +47,14 @@ struct Outcome {
 	std::string saved;		// the demo or saved game written, if any
 	bool finished = false;		// played to the end (not quit)
 	std::vector<std::string> stats;	// the engine's "i" messages, without the 'i'
+	std::string record;		// what a video of this game is rendered from
+	bool encoded = false;		// a video was written to the end
 };
 
 Outcome run_game(const Game& g);
+
+// like Tracker: into the Trash, with the attribute Restore uses
+bool move_to_trash(const char* path);
 
 // writes a copy beside the file and renames it over, so a crash never leaves half a file
 bool save_message(const BMessage& m, const BPath& path);

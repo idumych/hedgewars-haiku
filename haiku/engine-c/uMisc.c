@@ -115,6 +115,49 @@ LongInt umisc_SaveScreenshot(pointer screenshot)
     savescreenshot_result = 0;
     return savescreenshot_result;
 };
+void umisc_ReduceImage(PByteArray img,LongInt width,LongInt height,LongInt k)
+{
+    LongInt i;
+    LongInt j;
+    LongInt i0;
+    LongInt j0;
+    LongInt w;
+    LongInt h;
+    LongInt r;
+    LongInt g;
+    LongInt b;
+    w = width / k;
+    h = height / k;
+    if(k != 1)
+    {
+        {i = 0;
+         LongInt i__end__ = h - 1;
+         if (i <= i__end__) do {
+                                   {j = 0;
+                                    LongInt j__end__ = w - 1;
+                                    if (j <= j__end__) do {
+                                                              r = 0;
+                                                              g = 0;
+                                                              b = 0;
+                                                              {i0 = 0;
+                                                               LongInt i0__end__ = k - 1;
+                                                               if (i0 <= i0__end__) do {
+                                                                                           {j0 = 0;
+                                                                                            LongInt j0__end__ = k - 1;
+                                                                                            if (j0 <= j0__end__) do {
+                                                                                                                        r += (*img)[(4 * (((width * ((i * k) + i0)) + (j * k)) + j0)) + 0];
+                                                                                                                        g += (*img)[(4 * (((width * ((i * k) + i0)) + (j * k)) + j0)) + 1];
+                                                                                                                        b += (*img)[(4 * (((width * ((i * k) + i0)) + (j * k)) + j0)) + 2];
+                                                                                                                    } while(j0++ != j0__end__);}
+                                                                                       } while(i0++ != i0__end__);}
+                                                              (*img)[(4 * ((w * i) + j)) + 0] = r / (k * k);
+                                                              (*img)[(4 * ((w * i) + j)) + 1] = g / (k * k);
+                                                              (*img)[(4 * ((w * i) + j)) + 2] = b / (k * k);
+                                                              (*img)[(4 * ((w * i) + j)) + 3] = 255;
+                                                          } while(j++ != j__end__);}
+                               } while(i++ != i__end__);}
+    }
+};
 boolean umisc_MakeScreenshot(string255 filename,LongInt k,LongWord dump)
 {
     boolean makescreenshot_result;
@@ -199,6 +242,7 @@ boolean umisc_MakeScreenshot(string255 filename,LongInt k,LongWord dump)
     else
     {
         glReadPixels(0, 0, cScreenWidth, cScreenHeight, format, GL_UNSIGNED_BYTE, p);
+        umisc_ReduceImage(p, cScreenWidth, cScreenHeight, k);
     }
     fpcrtl_new(image);
     if(dump == 2)

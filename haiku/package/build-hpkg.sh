@@ -42,6 +42,10 @@ requires		{
 	haiku
 	lib:libGL
 	lib:libstdc++
+	lib:libavcodec >= 60
+	lib:libavformat >= 60
+	lib:libavutil >= 58
+	lib:libswresample >= 4
 }
 EOF
 

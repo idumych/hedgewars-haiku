@@ -4,8 +4,12 @@
 #include "uVariables.h"
 #include "uUtils.h"
 #include "uConsts.h"
-static const string255 __str9 = STRINIT("GL_EXT_framebuffer_object");
-static const string255 __str8 = STRINIT("");
+static const string255 __str13 = STRINIT("Warning: off-screen rendering is not supported; using back buffer but it may not work.");
+static const string255 __str12 = STRINIT("Using auxiliary buffer for video recording.");
+static const string255 __str11 = STRINIT("Using framebuffer for video recording.");
+static const string255 __str10 = STRINIT("GL_EXT_framebuffer_object");
+static const string255 __str9 = STRINIT("");
+static const string255 __str8 = STRINIT("  |----- Number of auxiliary buffers: ");
 static const string255 __str7 = STRINIT("  |----- Texture Size: ");
 static const string255 __str6 = STRINIT("  |----- Version: ");
 static const string255 __str5 = STRINIT("  |----- Vendor: ");
@@ -234,11 +238,37 @@ void urender_RendererSetup()
     uutils_AddFileLog(_strconcat(__str5, fpcrtl_pchar2str(((PChar)glGetString(GL_VENDOR)))));
     uutils_AddFileLog(_strconcat(__str6, fpcrtl_pchar2str(((PChar)glGetString(GL_VERSION)))));
     uutils_AddFileLog(_strconcat(__str7, uutils_IntToStr(MaxTextureSize)));
-    uutils_AddFileLog(__str8);
+    glGetIntegerv(GL_AUX_BUFFERS, &(AuxBufNum));
+    uutils_AddFileLog(_strconcat(__str8, uutils_IntToStr(AuxBufNum)));
+    uutils_AddFileLog(__str9);
     defaultFrame = 0;
+    if(GameType == gmtRecord)
+    {
+        if(urender_glLoadExtension(__str10))
+        {
+            urender_CreateFramebuffer_3(&(defaultFrame), &(depthv), &(texv));
+            glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, defaultFrame);
+            uutils_AddFileLog(__str11);
+        }
+        else
+        {
+            if(AuxBufNum > 0)
+            {
+                glDrawBuffer(GL_AUX0);
+                glReadBuffer(GL_AUX0);
+                uutils_AddFileLog(__str12);
+            }
+            else
+            {
+                glDrawBuffer(GL_BACK);
+                glReadBuffer(GL_BACK);
+                uutils_AddFileLog(__str13);
+            }
+        }
+    }
     if((cStereoMode == smHorizontal) || (cStereoMode == smVertical))
     {
-        if(urender_glLoadExtension(__str9))
+        if(urender_glLoadExtension(__str10))
         {
             urender_CreateFramebuffer_3(&(framel), &(depthl), &(texl));
             urender_CreateFramebuffer_3(&(framer), &(depthr), &(texr));

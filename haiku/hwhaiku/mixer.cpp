@@ -45,6 +45,9 @@ static int sMusicLoops;
 static bool sMusicPaused;
 static int sMusicVolume = 128;
 static float sMusicFade = 1, sMusicFadeStep;
+static pthread_mutex_t sPostLock = PTHREAD_MUTEX_INITIALIZER;
+static void (*volatile sPostMix)(void*, Uint8*, int);
+static void* volatile sPostData;
 
 static inline int16_t clamp16(int v) { return v > 32767 ? 32767 : v < -32768 ? -32768 : v; }
 
@@ -101,6 +104,27 @@ static void mix(void*, void* buffer, size_t size, const media_raw_audio_format&)
 	for (size_t i = 0; i < frames * 2; i++)
 		out[i] = clamp16(acc[i]);
 	pthread_mutex_unlock(&sLock);
+	pthread_mutex_lock(&sPostLock);
+	if (sPostMix)
+		sPostMix(sPostData, (Uint8*)buffer, (int)size);
+	pthread_mutex_unlock(&sPostLock);
+}
+
+// the video recorder taps the mixed output; SDL_LockAudio keeps it from running meanwhile
+HW_API void Mix_SetPostMix(void (*fn)(void*, Uint8*, int), void* data)
+{
+	sPostData = data;
+	sPostMix = fn;
+}
+HW_API void SDL_LockAudio() { pthread_mutex_lock(&sPostLock); }
+HW_API void SDL_UnlockAudio() { pthread_mutex_unlock(&sPostLock); }
+
+HW_API int Mix_QuerySpec(int* frequency, Uint16* format, int* channels)
+{
+	if (frequency) *frequency = sRate;
+	if (format) *format = 0x8010;	// AUDIO_S16LSB
+	if (channels) *channels = 2;
+	return sPlayer ? 1 : 0;
 }
 
 HW_API int Mix_Init(int flags) { return flags & (0x10 | 0x40); }	// OGG | OPUS

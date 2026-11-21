@@ -1,6 +1,6 @@
 # Hedgewars for Haiku, without SDL. Run on Haiku from the top of the tree:
 #   make -f haiku/Makefile            -> haiku/build/Hedgewars/{hwengine,lib/}
-# Needs: llvm19_clang mesa_devel glu_devel rust_bin (cargo); fpc only for make compare
+# Needs: llvm19_clang mesa_devel glu_devel ffmpeg6_devel rust_bin (cargo); fpc only for make compare
 #
 # The engine is built from haiku/engine-c, C generated from hedgewars/*.pas by
 # upstream's pas2c (haiku/tools/gen-engine-c.sh, run on a system with GHC).
@@ -27,7 +27,7 @@ ENGINE_C     := $(wildcard haiku/engine-c/*.c) $(wildcard project_files/hwc/rtl/
 ENGINE_OBJS  := $(patsubst %.c,$(OBJ)/engine/%.o,$(notdir $(ENGINE_C)))
 ENGINE_CC    ?= clang
 ENGINE_LIBS  := $(LIB)/libhwhaiku.so $(LIB)/liblua.so $(LIB)/libphyslayer.so \
-	$(LIB)/libhwengine_future.so $(LIB)/libphysfs.so
+	$(LIB)/libhwengine_future.so $(LIB)/libphysfs.so $(LIB)/libavwrapper.so
 
 all: $(APP)/hwengine $(APP)/Hedgewars
 
@@ -36,6 +36,11 @@ $(LIB)/libhwhaiku.so: $(HWHAIKU_SRCS) haiku/hwhaiku/hwhaiku.h
 	$(CXX) -O2 -g -std=c++17 -Wall -fPIC -shared -fvisibility=hidden \
 		-I$(HEADERS)/os/opengl -o $@ $(HWHAIKU_SRCS) \
 		-lbe -lgame -lGL -lmedia -ltranslation -ldevice -lnetwork
+
+# upstream's video encoder, on the system's ffmpeg (Haiku's media plugin uses it too)
+$(LIB)/libavwrapper.so: hedgewars/avwrapper/avwrapper.c
+	@mkdir -p $(LIB)
+	$(CC) -O2 -fPIC -shared -w -o $@ $< -lavcodec -lavformat -lavutil -lswresample
 
 # LuaPas links both -llua and libhwlua; one soname keeps it to one copy
 $(LIB)/liblua.so: $(LUA_SRCS)
@@ -74,7 +79,7 @@ $(OBJ)/engine/%.o: %.c $(wildcard haiku/engine-c/*.h project_files/hwc/rtl/*.h)
 
 $(APP)/hwengine: $(ENGINE_OBJS) $(ENGINE_LIBS)
 	$(ENGINE_CC) -o $@ $(ENGINE_OBJS) -L$(LIB) -lhwhaiku -lhwlua -lphysfs -lphyslayer \
-		-lhwengine_future -lGL -lm
+		-lhwengine_future -lavwrapper -lGL -lm
 
 # the Pascal engine, built with Free Pascal, only to compare the two (make compare)
 $(B)/pascal/hwengine: $(ENGINE_SRCS) $(OBJ)/config.inc $(ENGINE_LIBS)

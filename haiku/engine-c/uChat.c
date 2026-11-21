@@ -14,21 +14,23 @@
 #include "uRenderUtils.h"
 #include "uStore.h"
 #include "uLocale.h"
-static const string255 __str37 = STRINIT("chat");
-static const string255 __str36 = STRINIT("history");
-static const string255 __str35 = STRINIT("say");
-static const string255 __str34 = STRINIT("chatmsg");
-static const string255 __str33 = STRINIT("/clan ");
-static const string255 __str32 = STRINIT("* ");
-static const string255 __str31 = STRINIT("/me ");
-static const string255 __str30 = STRINIT("quit");
-static const string255 __str29 = STRINIT("/taunt ");
-static const string255 __str28 = STRINIT("help");
-static const string255 __str27 = STRINIT("/help");
-static const string255 __str26 = STRINIT("help room");
-static const string255 __str25 = STRINIT("help taunts");
-static const string255 __str24 = STRINIT("[Lua] chat input string parsing disabled");
-static const string255 __str23 = STRINIT("[Lua] chat input string parsing enabled");
+#include "uVideoRec.h"
+static const string255 __str38 = STRINIT("chat");
+static const string255 __str37 = STRINIT("history");
+static const string255 __str36 = STRINIT("say");
+static const string255 __str35 = STRINIT("chatmsg");
+static const string255 __str34 = STRINIT("/clan ");
+static const string255 __str33 = STRINIT("* ");
+static const string255 __str32 = STRINIT("/me ");
+static const string255 __str31 = STRINIT("quit");
+static const string255 __str30 = STRINIT("/taunt ");
+static const string255 __str29 = STRINIT("help");
+static const string255 __str28 = STRINIT("/help");
+static const string255 __str27 = STRINIT("help room");
+static const string255 __str26 = STRINIT("help taunts");
+static const string255 __str25 = STRINIT("[Lua] chat input string parsing disabled");
+static const string255 __str24 = STRINIT("[Lua] chat input string parsing enabled");
+static const string255 __str23 = STRINIT("Force-stopping prerecording! Lua commands can not be recorded");
 static const string255 __str22 = STRINIT("/lua issued");
 static const string255 __str21 = STRINIT("lua");
 static const string255 __str20 = STRINIT("debugvl");
@@ -717,17 +719,22 @@ void uchat_AcceptChatString(string255 s)
         {
             LuaCmdUsed = true;
             uutils_AddFileLog(__str22);
+            if(flagPrerecording)
+            {
+                uutils_AddFileLog(__str23);
+                uvideorec_StopPreRecording();
+            }
             if(GameType != gmtNet)
             {
                 liveLua = !liveLua;
                 if(liveLua)
                 {
-                    uutils_AddFileLog(__str23);
+                    uutils_AddFileLog(__str24);
                     uchat_AddChatString(_strprepend(0x3, fpcrtl_astr2str(trmsg[sidLuaParsingOn])));
                 }
                 else
                 {
-                    uutils_AddFileLog(__str24);
+                    uutils_AddFileLog(__str25);
                     uchat_AddChatString(_strprepend(0x3, fpcrtl_astr2str(trmsg[sidLuaParsingOff])));
                 }
                 uchat_UpdateInputLinePrefix_0();
@@ -738,7 +745,7 @@ void uchat_AcceptChatString(string255 s)
             }
             return;
         }
-        if(_strcompare(fpcrtl_copy(s, 2, 11), __str25))
+        if(_strcompare(fpcrtl_copy(s, 2, 11), __str26))
         {
             uchat_AddChatString(_strprepend(0x3, fpcrtl_astr2str(trcmd[sidCmdHeaderTaunts])));
             uchat_AddChatString(_strprepend(0x3, fpcrtl_astr2str(trcmd[sidCmdSpeech])));
@@ -759,11 +766,11 @@ void uchat_AcceptChatString(string255 s)
             uchat_AddChatString(_strprepend(0x3, fpcrtl_astr2str(trcmd[sidCmdBubble])));
             return;
         }
-        if(_strcompare(fpcrtl_copy(s, 2, 9), __str26))
+        if(_strcompare(fpcrtl_copy(s, 2, 9), __str27))
         {
             if(GameType == gmtNet)
             {
-                uchat_SendConsoleCommand(__str27);
+                uchat_SendConsoleCommand(__str28);
             }
             else
             {
@@ -771,7 +778,7 @@ void uchat_AcceptChatString(string255 s)
             }
             return;
         }
-        if(_strcompare(fpcrtl_copy(s, 2, 4), __str28))
+        if(_strcompare(fpcrtl_copy(s, 2, 4), __str29))
         {
             uchat_AddChatString(_strprepend(0x3, fpcrtl_astr2str(trcmd[sidCmdHeaderBasic])));
             if(GameType == gmtNet)
@@ -807,7 +814,7 @@ void uchat_AcceptChatString(string255 s)
                                    {
                                        if(!CurrentTeam->ExtDriven && (CurrentTeam->Hedgehogs[0].BotLevel == 0))
                                        {
-                                           ucommands_ParseCommand_2(_strappend(__str29, ((char)i)), true);
+                                           ucommands_ParseCommand_2(_strappend(__str30, ((char)i)), true);
                                        }
                                        return;
                                    }
@@ -855,7 +862,7 @@ void uchat_OpenChat(string255 s)
     Integer i;
     if(GameState == gsConfirm)
     {
-        ucommands_ParseCommand_2(__str30, true);
+        ucommands_ParseCommand_2(__str31, true);
     }
     isInChatMode = true;
     SDL_StopTextInput();
@@ -1408,9 +1415,9 @@ void uchat_chChatMessage(string255 (*s))
 void uchat_chSay(string255 (*s))
 {
     uio_SendIPC(_strprepend(0x73, (*s)));
-    if(_strcompare(fpcrtl_copy((*s), 1, 4), __str31))
+    if(_strcompare(fpcrtl_copy((*s), 1, 4), __str32))
     {
-        (*s) = _strconcat(_strappend(_strconcat(_strprepend(0x2, __str32), UserNick), 0x20), fpcrtl_copy((*s), 5, fpcrtl_Length((*s)) - 4));
+        (*s) = _strconcat(_strappend(_strconcat(_strprepend(0x2, __str33), UserNick), 0x20), fpcrtl_copy((*s), 5, fpcrtl_Length((*s)) - 4));
     }
     else
     {
@@ -1451,17 +1458,17 @@ void uchat_chChat(string255 (*s))
     }
     else
     {
-        uchat_OpenChat(__str33);
+        uchat_OpenChat(__str34);
     }
 };
 void uchat_initModule()
 {
     ShortInt i;
-    ucommands_RegisterVariable_3(__str34, &(uchat_chChatMessage), true);
-    ucommands_RegisterVariable_3(__str35, &(uchat_chSay), true);
+    ucommands_RegisterVariable_3(__str35, &(uchat_chChatMessage), true);
+    ucommands_RegisterVariable_3(__str36, &(uchat_chSay), true);
     ucommands_RegisterVariable_3(__str9, &(uchat_chTeamSay), true);
-    ucommands_RegisterVariable_3(__str36, &(uchat_chHistory), true);
-    ucommands_RegisterVariable_3(__str37, &(uchat_chChat), true);
+    ucommands_RegisterVariable_3(__str37, &(uchat_chHistory), true);
+    ucommands_RegisterVariable_3(__str38, &(uchat_chChat), true);
     lastStr = 0;
     localLastStr = 0;
     history = 0;

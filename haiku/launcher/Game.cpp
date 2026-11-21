@@ -177,6 +177,17 @@ std::string get_progress(const std::string& key)
 	return "";
 }
 
+bool move_to_trash(const char* path)
+{
+	BPath trash;
+	BEntry entry(path);
+	if (find_directory(B_TRASH_DIRECTORY, &trash) != B_OK)
+		return false;
+	BNode(&entry).WriteAttr("_trk/original_path", B_STRING_TYPE, 0, path, strlen(path) + 1);
+	BDirectory dir(trash.Path());
+	return entry.MoveTo(&dir) == B_OK;
+}
+
 bool save_message(const BMessage& m, const BPath& path)
 {
 	BPath tmp(path);
@@ -254,7 +265,14 @@ Outcome run_game(const Game& g)
 	std::vector<std::string> args = {engine, "--internal", "--port", port,
 		"--prefix", gDataDir.Path(), "--user-prefix", gUserDir.Path(), "--locale", "en.txt",
 		"--fullscreen-width", sw, "--fullscreen-height", sh, "--width", "1024", "--height", "768"};
-	if (g.fullscreen)
+	if (!g.videoPrefix.empty()) {	// HWRecorder::getArguments
+		args = {engine, "--internal", "--port", port, "--prefix", gDataDir.Path(),
+			"--user-prefix", gUserDir.Path(), "--locale", "en.txt", "--width", "1280", "--height", "720",
+			"--nosound", "--nomusic", "--volume", "0", "--recorder", "30", "1", g.videoPrefix,
+			// shortcut: fixed 720p, 30 frames/s, mp4 with MPEG-4 and AAC (Haiku's ffmpeg has no
+			// H.264 encoder); a settings window when someone asks
+			"mp4", "mpeg4", std::to_string(4 * 1048576), g.sound ? "aac" : "no"};
+	} else if (g.fullscreen)
 		args.push_back("--fullscreen");
 	if (!g.sound)
 		args.push_back("--nosound");
@@ -292,7 +310,7 @@ Outcome run_game(const Game& g)
 
 	// everything sent and every game message, as the Qt frontend records it
 	std::string record;
-	bool keepRecord = g.replay.find("\x02TD") == std::string::npos;	// not when watching a demo
+	bool keepRecord = g.replay.find("\x02TD") == std::string::npos && g.videoPrefix.empty();	// not when watching
 	char state = 0;	// 'q' finished, 'Q' interrupted, 'H' halted
 	auto send_all = [&](const std::string& data) {
 		record += data;
@@ -325,8 +343,18 @@ Outcome run_game(const Game& g)
 				case 'q': case 'Q': case 'H': state = msg[0]; break;
 				case 'm': keepRecord = false; break;
 				case 'i': out.stats.push_back(msg.substr(1)); break;
+				case 'p':	// the recorder's progress; in a game, a target point
+					if (g.videoPrefix.empty())
+						record += raw;
+					else if (g.progress && msg.size() >= 3)
+						g.progress(((uint8)msg[1] * 256 + (uint8)msg[2]) / 10000.f);
+					break;
 				case 's': case 'b': case 'W': case '~': break;
 				case 'V': case 'v': {
+					if (msg == "v" && !g.videoPrefix.empty()) {	// the recorder finished
+						out.encoded = true;
+						break;
+					}
 					// campaign and mission variables: "?name" asks, "!name value" stores
 					std::string body = msg.size() > 1 ? msg.substr(2) : "";
 					body = body.substr(0, body.find('\0'));
@@ -346,6 +374,7 @@ Outcome run_game(const Game& g)
 	int status;
 	waitpid(pid, &status, 0);
 	out.finished = state == 'q';
+	out.record = record;
 	if (keepRecord && state)
 		out.saved = save_recording(record, out.finished);
 	return out;

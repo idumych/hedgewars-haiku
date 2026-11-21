@@ -84,9 +84,14 @@ boolean fpcrtl_eof(File f) {
     IOResult = IO_NO_ERROR;
     if (f->eof || f->fp == NULL || feof(f->fp)) {
         return true;
-    } else {
-        return false;
     }
+    /* Pascal's eof is true at the end, before a read fails: peek */
+    int c = getc(f->fp);
+    if (c == EOF) {
+        return true;
+    }
+    ungetc(c, f->fp);
+    return false;
 }
 
 void __attribute__((overloadable)) fpcrtl_readLn(File f) {
@@ -246,12 +251,14 @@ Int64 fpcrtl_fileSize(File f)
     assert(f->record_len > 0);
 
     IOResult = IO_NO_ERROR;
+    long pos = ftell(f->fp);
     int i = fseek(f->fp, 0, SEEK_END);
     if (i == -1) {
         IOResult = IO_ERROR_DUMMY;
         return -1;
     }
     long size = ftell(f->fp);
+    fseek(f->fp, pos, SEEK_SET);    /* reads go on from where they were */
     if (size == -1) {
         IOResult = IO_ERROR_DUMMY;
         return -1;

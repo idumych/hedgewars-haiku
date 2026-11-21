@@ -6,18 +6,22 @@
 #include "uVariables.h"
 #include "uPhysFSLayer.h"
 #include "uDebug.h"
-static const string255 __str10 = STRINIT(" ticks. TurnTimeLeft = ");
-static const string255 __str9 = STRINIT("halt at ");
-static const string255 __str8 = STRINIT("[WARNING] Could not open log file for writing. Log will be written to stdout!");
-static const string255 __str7 = STRINIT(".log");
-static const string255 __str6 = STRINIT("/Logs/");
-static const string255 __str5 = STRINIT("/Logs");
-static const string255 __str4 = STRINIT("preview_pas2c");
-static const string255 __str3 = STRINIT("game_pas2c");
-static const string255 __str2 = STRINIT("rec");
-static const string255 __str1 = STRINIT(": ");
+static const string255 __str13 = STRINIT(" ticks. TurnTimeLeft = ");
+static const string255 __str12 = STRINIT("halt at ");
+static const string255 __str11 = STRINIT("[WARNING] Could not open log file for writing. Log will be written to stdout!");
+static const string255 __str10 = STRINIT(".log");
+static const string255 __str9 = STRINIT("/Logs/");
+static const string255 __str8 = STRINIT("/Logs");
+static const string255 __str7 = STRINIT("Could not create mutex for logging");
+static const string255 __str6 = STRINIT("preview_pas2c");
+static const string255 __str5 = STRINIT("game_pas2c");
+static const string255 __str4 = STRINIT("rec");
+static const string255 __str3 = STRINIT("Logging mutex could not be unlocked!");
+static const string255 __str2 = STRINIT(": ");
+static const string255 __str1 = STRINIT("Logging mutex could not be locked!");
 static const string255 __str0 = STRINIT("");
 static PFSFile logFile;
+static PSDL_mutex logMutex;
 typedef char CharArray_tt[(255 + 1)];
 static CharArray_tt CharArray;
 string255 uutils_Trim(string255 s)
@@ -468,13 +472,21 @@ LongWord uutils_endian(LongWord independent)
 };
 void uutils_AddFileLog(string255 s)
 {
+    if(SDL_LockMutex(logMutex) != 0)
+    {
+        udebug_OutError(__str1, true);
+    }
     if(logFile != NULL)
     {
-        uphysfslayer_pfsWriteLn(logFile, _strconcat(_strconcat(uutils_IntToStr(GameTicks), __str1), s));
+        uphysfslayer_pfsWriteLn(logFile, _strconcat(_strconcat(uutils_IntToStr(GameTicks), __str2), s));
     }
     else
     {
-        fpcrtl_writeLn(stdout, _strconcat(_strconcat(uutils_IntToStr(GameTicks), __str1), s));
+        fpcrtl_writeLn(stdout, _strconcat(_strconcat(uutils_IntToStr(GameTicks), __str2), s));
+    }
+    if(SDL_UnlockMutex(logMutex) != 0)
+    {
+        udebug_OutError(__str3, true);
     }
 };
 void uutils_AddFileLogRaw(PChar s)
@@ -735,25 +747,30 @@ void uutils_initModule(boolean isNotPreview)
     {
         if(GameType == gmtRecord)
         {
-            logfileBase = __str2;
+            logfileBase = __str4;
         }
         else
         {
-            logfileBase = __str3;
+            logfileBase = __str5;
         }
     }
     else
     {
-        logfileBase = __str4;
+        logfileBase = __str6;
     }
-    if(!uphysfslayer_pfsExists(__str5))
+    logMutex = SDL_CreateMutex();
+    if(logMutex == NULL)
     {
-        uphysfslayer_pfsMakeDir(__str5);
+        udebug_OutError(__str7, true);
+    }
+    if(!uphysfslayer_pfsExists(__str8))
+    {
+        uphysfslayer_pfsMakeDir(__str8);
     }
     i = 0;
     while(i < 7)
     {
-        logFile = uphysfslayer_pfsOpenWrite(_strconcat(_strconcat(_strconcat(__str6, logfileBase), uutils_IntToStr(i)), __str7));
+        logFile = uphysfslayer_pfsOpenWrite(_strconcat(_strconcat(_strconcat(__str9, logfileBase), uutils_IntToStr(i)), __str10));
         if(logFile != NULL)
         {
             break;
@@ -762,7 +779,7 @@ void uutils_initModule(boolean isNotPreview)
     }
     if(logFile == NULL)
     {
-        fpcrtl_writeLn(stdout, __str8);
+        fpcrtl_writeLn(stdout, __str11);
     }
     mobileRecord.PerformRumble = NULL;
     mobileRecord.GameLoading = NULL;
@@ -773,12 +790,13 @@ void uutils_freeModule()
 {
     if(logFile != NULL)
     {
-        uphysfslayer_pfsWriteLn(logFile, _strconcat(_strconcat(_strconcat(__str9, uutils_IntToStr(GameTicks)), __str10), uutils_IntToStr(TurnTimeLeft)));
+        uphysfslayer_pfsWriteLn(logFile, _strconcat(_strconcat(_strconcat(__str12, uutils_IntToStr(GameTicks)), __str13), uutils_IntToStr(TurnTimeLeft)));
         uphysfslayer_pfsFlush(logFile);
         uphysfslayer_pfsClose(logFile);
     }
     else
     {
-        fpcrtl_writeLn(stdout, _strconcat(_strconcat(_strconcat(__str9, uutils_IntToStr(GameTicks)), __str10), uutils_IntToStr(TurnTimeLeft)));
+        fpcrtl_writeLn(stdout, _strconcat(_strconcat(_strconcat(__str12, uutils_IntToStr(GameTicks)), __str13), uutils_IntToStr(TurnTimeLeft)));
     }
+    SDL_DestroyMutex(logMutex);
 };

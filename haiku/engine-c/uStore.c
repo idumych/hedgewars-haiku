@@ -14,14 +14,15 @@
 #include "uLocale.h"
 #include "uInputHandler.h"
 #include "adler32.h"
-static const string255 __str56 = STRINIT("fullscr");
-static const string255 __str55 = STRINIT("hwengine");
-static const string255 __str54 = STRINIT("SDL_CreateWindow");
-static const string255 __str53 = STRINIT("Hedgewars");
-static const string255 __str52 = STRINIT("Freeing old primary surface...");
-static const string255 __str51 = STRINIT("IMG_Init");
-static const string255 __str50 = STRINIT("Init SDL_image... ");
-static const string255 __str49 = STRINIT("Preparing to change video parameters...");
+static const string255 __str57 = STRINIT("fullscr");
+static const string255 __str56 = STRINIT("hwengine");
+static const string255 __str55 = STRINIT("Hedgewars");
+static const string255 __str54 = STRINIT("Freeing old primary surface...");
+static const string255 __str53 = STRINIT("IMG_Init");
+static const string255 __str52 = STRINIT("Init SDL_image... ");
+static const string255 __str51 = STRINIT("Preparing to change video parameters...");
+static const string255 __str50 = STRINIT("SDL_CreateWindow");
+static const string255 __str49 = STRINIT("hedgewars video rendering (SDL2 hidden window)");
 static const string255 __str48 = STRINIT("RenderHelpWindow: fail to create surface");
 static const string255 __str47 = STRINIT(" ");
 static const string255 __str46 = STRINIT("???");
@@ -1280,6 +1281,15 @@ void ustore_ShowWeaponTooltip(LongInt x,LongInt y)
         urender_DrawTexture_3(x, y, WeaponTooltipTex);
     }
 };
+void ustore_InitOffscreenOpenGL()
+{
+    SDLwindow = SDL_CreateWindow(fpcrtl__pchar(__str49), SDL_WINDOWPOS_CENTERED_MASK, SDL_WINDOWPOS_CENTERED_MASK, cScreenWidth, cScreenHeight, SDL_WINDOW_HIDDEN | SDL_WINDOW_OPENGL);
+    if(udebug_SDLCheck(SDLwindow != NULL, __str50, true))
+    {
+        return;
+    }
+    ustore_SetupOpenGL();
+};
 void ustore_chFullScr(string255 (*s))
 {
     LongWord flags = 0;
@@ -1310,11 +1320,11 @@ void ustore_chFullScr(string255 (*s))
         cScreenWidth = cWindowedWidth;
         cScreenHeight = cWindowedHeight;
     }
-    uutils_AddFileLog(__str49);
+    uutils_AddFileLog(__str51);
     if(SDLwindow == NULL)
     {
-        uconsole_WriteToConsole(__str50);
-        if(udebug_SDLCheck(IMG_Init(IMG_INIT_PNG) != 0, __str51, true))
+        uconsole_WriteToConsole(__str52);
+        if(udebug_SDLCheck(IMG_Init(IMG_INIT_PNG) != 0, __str53, true))
         {
             return;
         }
@@ -1324,7 +1334,7 @@ void ustore_chFullScr(string255 (*s))
     {
         AmmoMenuInvalidated = true;
         urender_SetScale(cDefaultZoomLevel);
-        uutils_AddFileLog(__str52);
+        uutils_AddFileLog(__str54);
     }
     ustore_SetupOpenGLAttributes();
     x = SDL_WINDOWPOS_CENTERED_MASK;
@@ -1336,7 +1346,7 @@ void ustore_chFullScr(string255 (*s))
         {
             flags = flags | SDL_WINDOW_FULLSCREEN;
         }
-        SDLwindow = SDL_CreateWindow(fpcrtl__pchar(__str53), x, y, cScreenWidth, cScreenHeight, flags);
+        SDLwindow = SDL_CreateWindow(fpcrtl__pchar(__str55), x, y, cScreenWidth, cScreenHeight, flags);
     }
     else
     {
@@ -1356,11 +1366,11 @@ void ustore_chFullScr(string255 (*s))
             urender_UpdateViewLimits();
         }
     }
-    if(udebug_SDLCheck(SDLwindow != NULL, __str54, true))
+    if(udebug_SDLCheck(SDLwindow != NULL, __str50, true))
     {
         return;
     }
-    ico = ustore_LoadDataImage(ptGraphics, __str55, ifIgnoreCaps);
+    ico = ustore_LoadDataImage(ptGraphics, __str56, ifIgnoreCaps);
     if(ico != NULL)
     {
         SDL_SetWindowIcon(SDLwindow, ico);
@@ -1395,7 +1405,7 @@ void ustore_WarpMouse(Word x,Word y)
 {
     SDL_WarpMouseInWindow(SDLwindow, x, y);
 };
-inline void ustore_SwapBuffers()
+void ustore_SwapBuffers()
 {
     if(GameType == gmtRecord)
     {
@@ -1411,7 +1421,7 @@ void ustore_initModule()
 {
     TAmmoType ai;
     LongInt i;
-    ucommands_RegisterVariable_3(__str56, &(ustore_chFullScr), true);
+    ucommands_RegisterVariable_3(__str57, &(ustore_chFullScr), true);
     cScaleFactor = 2.0;
     urender_UpdateViewLimits();
     Step = 0;

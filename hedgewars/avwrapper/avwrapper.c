@@ -26,6 +26,19 @@
 #include "libavformat/avformat.h"
 #include "libavutil/avutil.h"
 #include "libavutil/mathematics.h"
+#ifdef __HAIKU__
+#include <fcntl.h>
+#include <fs_attr.h>
+#include <TypeConstants.h>
+#include <unistd.h>
+#endif
+#if LIBAVCODEC_VERSION_MAJOR >= 60
+// the game mixes 16-bit interleaved sound at its own rate; encoders such as AAC
+// and Opus want other sample formats and rates
+#include "libavutil/audio_fifo.h"
+#include "libswresample/swresample.h"
+#define AVWRAP_RESAMPLE
+#endif
 
 #if LIBAVCODEC_VERSION_MAJOR >= 59
 #include <libavcodec/bsf.h>
@@ -66,6 +79,11 @@ static FILE* g_pSoundFile;
 static int16_t* g_pSamples;
 #endif
 static int g_NumSamples;
+#ifdef AVWRAP_RESAMPLE
+static SwrContext* g_pResampler;
+static AVAudioFifo* g_pFifo;
+static int g_SoundEnded;
+#endif
 #if LIBAVCODEC_VERSION_MAJOR >= 53
 static int64_t g_NextAudioPts;
 #endif
@@ -232,6 +250,24 @@ static void AddAudioStream()
     // put parameters
     g_pAudio->sample_fmt = AV_SAMPLE_FMT_S16;
     g_pAudio->sample_rate = g_Frequency;
+#ifdef AVWRAP_RESAMPLE
+    if (g_pACodec->sample_fmts)
+    {
+        const enum AVSampleFormat* f = g_pACodec->sample_fmts;
+        while (*f != AV_SAMPLE_FMT_NONE && *f != AV_SAMPLE_FMT_S16)
+            f++;
+        g_pAudio->sample_fmt = *f == AV_SAMPLE_FMT_S16 ? *f : g_pACodec->sample_fmts[0];
+    }
+    if (g_pACodec->supported_samplerates)
+    {
+        const int* r = g_pACodec->supported_samplerates;
+        int best = r[0];
+        for (; *r; r++)	// the rate itself if allowed, else the nearest
+            if (abs(*r - (int)g_Frequency) < abs(best - (int)g_Frequency))
+                best = *r;
+        g_pAudio->sample_rate = best;
+    }
+#endif
 #if LIBAVCODEC_VERSION_MAJOR >= 60
     const AVChannelLayout* pChLayout = g_pACodec->ch_layouts;
     if (pChLayout)
@@ -252,16 +288,15 @@ static void AddAudioStream()
     }
     if (!g_pAudio->ch_layout.nb_channels)
     {
-        // no suitable layout found
-        g_pAudio->ch_layout.order = AV_CHANNEL_ORDER_UNSPEC;
-        g_pAudio->ch_layout.nb_channels = g_Channels;
+        // no suitable layout found: the usual one for that many (AAC refuses an unspecified one)
+        av_channel_layout_default(&g_pAudio->ch_layout, g_Channels);
     }
 #else
     g_pAudio->channels = g_Channels;
 #endif
 
     // set time base as invers of sample rate
-    g_pAudio->time_base.den = g_pAStream->time_base.den = g_Frequency;
+    g_pAudio->time_base.den = g_pAStream->time_base.den = g_pAudio->sample_rate;
     g_pAudio->time_base.num = g_pAStream->time_base.num = 1;
 
     // set quality
@@ -328,6 +363,19 @@ static void AddAudioStream()
 #else
     g_pSamples = (int16_t*)av_malloc(g_NumSamples*g_Channels*sizeof(int16_t));
 #endif
+#ifdef AVWRAP_RESAMPLE
+    AVChannelLayout inLayout;
+    av_channel_layout_default(&inLayout, g_Channels);
+    if (swr_alloc_set_opts2(&g_pResampler, &g_pAudio->ch_layout, g_pAudio->sample_fmt,
+            g_pAudio->sample_rate, &inLayout, AV_SAMPLE_FMT_S16, g_Frequency, 0, NULL) < 0
+        || swr_init(g_pResampler) < 0)
+    {
+        Log("Could not set up the sound conversion\n");
+        return;
+    }
+    g_pFifo = av_audio_fifo_alloc(g_pAudio->sample_fmt, g_Channels, g_NumSamples);
+    g_SoundEnded = 0;
+#endif
 #if LIBAVCODEC_VERSION_MAJOR >= 58
     g_pAPacket = av_packet_alloc();
     if (!g_pAPacket)
@@ -358,7 +406,34 @@ static int WriteAudioFrame()
     pData = g_pSamples;
 #endif
 
+#ifdef AVWRAP_RESAMPLE
+    // convert sound until a whole frame is there, or the sound has ended
+    while (av_audio_fifo_size(g_pFifo) < g_NumSamples && !g_SoundEnded)
+    {
+        int16_t in[1024 * 8];
+        int n = fread(in, 2*g_Channels, 1024, g_pSoundFile);
+        const uint8_t* src = (const uint8_t*)in;
+        uint8_t** out = NULL;
+        int cap = swr_get_out_samples(g_pResampler, n);
+        if (n == 0)
+            g_SoundEnded = 1;	// and a call without input flushes the converter
+        if (cap <= 0)
+            continue;
+        if (av_samples_alloc_array_and_samples(&out, NULL, g_Channels, cap, g_pAudio->sample_fmt, 0) < 0)
+            return FatalError("Could not allocate sound buffer");
+        int got = swr_convert(g_pResampler, out, cap, n ? &src : NULL, n);
+        if (got > 0)
+            av_audio_fifo_write(g_pFifo, (void**)out, got);
+        av_freep(&out[0]);
+        av_freep(&out);
+    }
+    int NumSamples = av_audio_fifo_read(g_pFifo, (void**)g_pAFrame->data,
+        FFMIN(g_NumSamples, av_audio_fifo_size(g_pFifo)));
+    if (NumSamples < 0)
+        NumSamples = 0;
+#else
     int NumSamples = fread(pData, 2*g_Channels, g_NumSamples, g_pSoundFile);
+#endif
 
 #if LIBAVCODEC_VERSION_MAJOR >= 53
     AVFrame* pFrame = NULL;
@@ -759,6 +834,15 @@ AVWRAP_DECL int AVWrapper_Init(
 #endif
     }
 
+#if defined(__HAIKU__) && LIBAVCODEC_VERSION_MAJOR >= 59
+    // the Haiku frontend lists videos without opening them: the description as an attribute
+    int fd = open(g_pContainer->url, O_RDONLY);
+    if (fd >= 0)
+    {
+        fs_write_attr(fd, "Hedgewars:description", B_STRING_TYPE, 0, pDesc, strlen(pDesc) + 1);
+        close(fd);
+    }
+#endif
     g_pVFrame->pts = -1;
 
     // write the stream header, if any
@@ -813,6 +897,11 @@ AVWRAP_DECL int AVWrapper_Close()
         av_free(g_pSamples);
 #endif
         fclose(g_pSoundFile);
+#ifdef AVWRAP_RESAMPLE
+        swr_free(&g_pResampler);
+        av_audio_fifo_free(g_pFifo);
+        g_pFifo = NULL;
+#endif
     }
 
 #if LIBAVCODEC_VERSION_MAJOR >= 59

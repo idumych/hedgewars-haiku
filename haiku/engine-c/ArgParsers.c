@@ -205,6 +205,22 @@ void argparsers_setStereoMode(LongInt tmp)
 void argparsers_startVideoRecording(LongInt (*paramIndex))
 {
     UNUSED ((*paramIndex));
+    GameType = gmtRecord;
+    ++(*paramIndex);
+    cVideoFramerateNum = uutils_StrToInt(fpcrtl_ParamStr((*paramIndex)));
+    ++(*paramIndex);
+    cVideoFramerateDen = uutils_StrToInt(fpcrtl_ParamStr((*paramIndex)));
+    ++(*paramIndex);
+    RecPrefix = fpcrtl_ParamStr((*paramIndex));
+    ++(*paramIndex);
+    cAVFormat = fpcrtl_ParamStr((*paramIndex));
+    ++(*paramIndex);
+    cVideoCodec = fpcrtl_ParamStr((*paramIndex));
+    ++(*paramIndex);
+    cVideoQuality = uutils_StrToInt(fpcrtl_ParamStr((*paramIndex)));
+    ++(*paramIndex);
+    cAudioCodec = fpcrtl_ParamStr((*paramIndex));
+    ++(*paramIndex);
 };
 LongInt argparsers_getLongIntParameter(string255 str,LongInt (*paramIndex),boolean (*wrongParameter))
 {

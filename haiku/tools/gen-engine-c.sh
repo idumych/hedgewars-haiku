@@ -23,6 +23,6 @@ sed -e 's|${HEDGEWARS_PROTO_VER}|60|' -e 's|${HEDGEWARS_VERSION}|1.1.0-dev|' \
 	-e 's|${FONTS_DIRS_ARRAY}|array [0..1] of PChar = (nil, nil);|' \
 	hedgewars/config.inc.in > "$OUT/config.inc"
 "$WORK/pas2c" -n hwengine -i hedgewars -o "$OUT" -a "$OUT" \
-	-d ENDIAN_LITTLE -d DEBUGFILE -d HAIKU > "$WORK/pas2c.log" || { cat "$WORK/pas2c.log"; exit 1; }
+	-d ENDIAN_LITTLE -d DEBUGFILE -d HAIKU -d USE_VIDEO_RECORDING > "$WORK/pas2c.log" || { cat "$WORK/pas2c.log"; exit 1; }
 rm -f "$OUT/config.inc" preprocess.out
 echo "$(ls "$OUT"/*.c | wc -l) C files in $OUT"

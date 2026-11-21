@@ -33,6 +33,7 @@ PTexture ustore_RenderHelpWindow(astring caption,astring subcaption,astring desc
 void ustore_RenderWeaponTooltip(TAmmoType atype);
 void ustore_ShowWeaponTooltip(LongInt x,LongInt y);
 void ustore_MakeCrossHairs();
+void ustore_InitOffscreenOpenGL();
 void ustore_WarpMouse(Word x,Word y);
 void ustore_SwapBuffers();
 void ustore_SetSkyColor(real r,real g,real b);

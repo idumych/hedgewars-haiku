@@ -20,10 +20,12 @@
 #include "uTeams.h"
 #include "uDebug.h"
 #include "uInputHandler.h"
-static const string255 __str4 = STRINIT("quit");
-static const string255 __str3 = STRINIT(" failed!");
-static const string255 __str2 = STRINIT("Name-texture creation for ammo type #");
-static const string255 __str1 = STRINIT("No default text/translation found for ammo type #");
+#include "uVideoRec.h"
+static const string255 __str5 = STRINIT("quit");
+static const string255 __str4 = STRINIT(" failed!");
+static const string255 __str3 = STRINIT("Name-texture creation for ammo type #");
+static const string255 __str2 = STRINIT("No default text/translation found for ammo type #");
+static const string255 __str1 = STRINIT("rec");
 static const string255 __str0 = STRINIT("");
 static LongInt AMShiftTargetX;
 static LongInt AMShiftTargetY;
@@ -962,6 +964,7 @@ void uworld_DrawWorldStereo(LongInt Lag,TRenderMode RM)
     boolean replicateToLeft;
     boolean replicateToRight;
     boolean isNotHiddenByCinematic;
+    Byte a;
     if(WorldEdge != weWrap)
     {
         replicateToLeft = false;
@@ -1640,6 +1643,22 @@ void uworld_DrawWorldStereo(LongInt Lag,TRenderMode RM)
             }
         }
     }
+    if(flagPrerecording)
+    {
+        if(recTexture == NULL)
+        {
+            s = __str1;
+            tmpSurface = TTF_RenderUTF8_Blended(Fontz[fntBig].Handle, uutils_Str2PChar(s), cWhiteColorChannels);
+            tmpSurface = umisc_doSurfaceConversion(tmpSurface);
+            utextures_FreeAndNilTexture(&(recTexture));
+            recTexture = utextures_Surface2Tex(tmpSurface, false);
+            SDL_FreeSurface(tmpSurface);
+        }
+        urender_DrawTexture_3(-(cScreenWidth >> 1) + 50, 20, recTexture);
+        t = -255 + ((RealTicks / 2) & 511);
+        a = ((Byte)uutils_Min(255, fpcrtl_abs(t)));
+        urender_DrawCircleFilled(-(cScreenWidth >> 1) + 30, 35, 10, 0xff, 0x00, 0x00, a);
+    }
     urender_SetScale(zoom);
     if(isCursorVisible && !bShowAmmoMenu)
     {
@@ -1908,12 +1927,12 @@ void uworld_SetAmmoTexts(TAmmoType ammoType,astring name,astring caption,astring
     {
         ammoStr = trammo[ammoStrId];
     }
-    if(udebug_checkFails(fpcrtl_LengthA(ammoStr) > 0, _strappend(_strconcat(__str1, uutils_IntToStr((ammoType))), 0x21), true))
+    if(udebug_checkFails(fpcrtl_LengthA(ammoStr) > 0, _strappend(_strconcat(__str2, uutils_IntToStr((ammoType))), 0x21), true))
     {
         return;
     }
     tmpsurf = TTF_RenderUTF8_Blended(Fontz[uutils_CheckCJKFont(ammoStr, fnt16)].Handle, fpcrtl__pcharA(ammoStr), cWhiteColorChannels);
-    if(udebug_checkFails(tmpsurf != NULL, _strconcat(_strconcat(__str2, uutils_IntToStr((ammoType))), __str3), true))
+    if(udebug_checkFails(tmpsurf != NULL, _strconcat(_strconcat(__str3, uutils_IntToStr((ammoType))), __str4), true))
     {
         return;
     }
@@ -1939,8 +1958,9 @@ void uworld_onFocusStateChanged()
 {
     if(!cHasFocus && (GameState != gsConfirm))
     {
-        ucommands_ParseCommand_2(__str4, true);
+        ucommands_ParseCommand_2(__str5, true);
     }
+    if(!flagPrerecording)
     {
         if(!cHasFocus)
         {
