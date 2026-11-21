@@ -1,0 +1,55 @@
+// The Hedgewars server protocol (frontend-qt6/net/newnetclient.cpp) without the UI:
+// message framing, base64 for the engine messages it carries, and the engine
+// config a net game starts with (game.cpp commonConfig, gamecfgwidget.cpp
+// getFullConfig). No Haiku headers, so it's tested on any system.
+#pragma once
+
+#include <map>
+#include <string>
+#include <vector>
+
+namespace net {
+
+// "PART\nPART\n\n"
+std::string message(const std::vector<std::string>& parts);
+// takes the next complete message off the front of buf; false when there's none yet
+bool next_message(std::string& buf, std::vector<std::string>& parts);
+
+std::string base64_encode(const std::string& s);
+std::string base64_decode(const std::string& s);
+
+struct Team {
+	std::string name, grave = "Simple", fort = "Plane", voice = "Default", flag = "hedgewars", owner;
+	int difficulty = 0, color = 0, hogs = 4;	// color: an index into the clan colours
+	std::string hogNames[8], hats[8];
+	bool remote = true;	// played by another computer
+};
+
+// ADD_TEAM's fields after the name
+std::vector<std::string> add_team(const Team& t);
+// from ADD_TEAM's fields (without the command); false if malformed
+bool parse_team(const std::vector<std::string>& f, Team& t);
+
+// the room's settings, by CFG name ("MAP", "SCHEME", …)
+typedef std::map<std::string, std::vector<std::string>> Config;
+// stores a CFG message's values (FULLMAPCONFIG becomes its six parts)
+void set_param(Config& c, const std::string& name, const std::vector<std::string>& values);
+std::string param(const Config& c, const std::string& name, size_t i = 0);
+
+// the CFG messages a room master sends for these choices, in the Qt order (map last)
+std::vector<std::vector<std::string>> master_config(int scheme, int weapons, const std::string& map,
+	int mapgen, const std::string& theme, const std::string& seed, int templateFilter);
+
+// everything the engine is sent when it asks for the config. theme: the one to
+// use (a fixed map's own); the scheme's and weapons' values come from the room,
+// or the built-in ones of that name
+std::string engine_config(const Config& c, const std::vector<Team>& teams, const std::string& theme);
+
+// the built-in schemes and weapon sets (schemes.h, weapons.h)
+std::vector<std::string> scheme_names();
+std::vector<std::string> weapon_names();
+
+// a chat line as the engine shows it (proto.cpp formatChatMsg)
+std::string chat_line(const std::string& nick, const std::string& text);
+
+}

@@ -91,7 +91,7 @@ $(B)/pascal/hwengine: $(ENGINE_SRCS) $(OBJ)/config.inc $(ENGINE_LIBS)
 $(APP)/Hedgewars: $(wildcard haiku/launcher/*.cpp haiku/launcher/*.h haiku/launcher/*.rdef) frontend-qt6/weapons.h
 	@mkdir -p $(OBJ)
 	$(CXX) -O2 -g -std=c++17 -Wall -Ifrontend-qt6 -I$(HEADERS)/private/interface -DHW_DATADIR='"$(DATADIR)"' \
-		-o $@ haiku/launcher/*.cpp -lbe -lnetwork -ltranslation
+		-o $@ haiku/launcher/*.cpp -lbe -lnetwork -ltranslation -lcolumnlistview -lcrypto -lcurl
 	rc -I . -o $(OBJ)/Hedgewars.rsrc haiku/launcher/*.rdef	# -I: where import finds files
 	xres -o $@ $(OBJ)/Hedgewars.rsrc
 	mimeset -f $@
@@ -108,6 +108,12 @@ test:
 	$(CXX) -std=c++17 -Wall -g $(TEST_FLAGS) -Ihaiku/launcher \
 		-o $(OBJ)/stats_test haiku/tests/stats_test.cpp haiku/launcher/StatsData.cpp
 	$(OBJ)/stats_test
+	$(CXX) -std=c++17 -Wall -g $(TEST_FLAGS) -Ihaiku/launcher -Ifrontend-qt6 \
+		-o $(OBJ)/net_test haiku/tests/net_test.cpp haiku/launcher/NetProto.cpp
+	$(OBJ)/net_test
+	$(CXX) -std=c++17 -Wall -g $(TEST_FLAGS) -Ihaiku/launcher \
+		-o $(OBJ)/content_test haiku/tests/content_test.cpp haiku/launcher/ContentData.cpp
+	$(OBJ)/content_test
 ifeq ($(shell uname -s),Haiku)
 	$(CXX) -std=c++17 -Wall -Ihaiku/launcher -o $(OBJ)/progress_test haiku/tests/progress_test.cpp \
 		haiku/launcher/Game.cpp -lbe -lnetwork

@@ -53,6 +53,32 @@ frontend's local pages, in tabs:
   picture and map; Play opens it in MediaPlayer
 - **Team**: name, flag, grave, fort, voice, hedgehog names and hats
 
+and, from the Hedgewars menu, two windows:
+
+- **Network game**: connect to a Hedgewars server (nickname, and the password
+  of a registered nickname or a locked room when asked), the lobby's rooms,
+  players and chat, then a room: add or remove your team, chat, ready, and
+  for the room's host the scheme, weapons, map, theme and hedgehogs per team
+  and Start game. The engine plays the room's game and relays its moves
+  through the server; the statistics follow, as after a local game.
+  Implemented of the protocol (`launcher/NetProto.cpp`, `Net.cpp`):
+  NICK, PROTO, CONNECTED, PING/PONG, ERROR, WARNING, BYE, NOTICE (nickname
+  taken, room password), ASKPASSWORD/PASSWORD/SERVER_AUTH, LOBBY:JOINED/LEFT,
+  ROOMS, ROOM ADD/UPD/DEL, SERVER_MESSAGE, CHAT, INFO, CLIENT_FLAGS (ready,
+  host, playing), CREATE_ROOM, JOIN_ROOM, JOINING, JOINED, LEFT, PART,
+  KICKED, ROOMABANDONED, ADD_TEAM, TEAM_ACCEPTED, REMOVE_TEAM, TEAM_COLOR,
+  HH_NUM, CFG (all of FULLMAPCONFIG, MAP, MAPGEN, MAZE_SIZE, SEED, TEMPLATE,
+  FEATURE_SIZE, THEME, SCRIPT, SCHEME, AMMO), TOGGLE_READY, START_GAME,
+  RUN_GAME, EM, ROUND_FINISHED, ROUNDFINISHED, QUIT. Not implemented: the
+  admin page and its commands (BAN, KICK, DELEGATE, SET_SERVER_VAR…), room
+  flags and renaming, FOLLOW, watching games in progress (REPLAY_START),
+  REDIRECT, TLS, team chat, hand-drawn maps (DRAWNMAP), game styles chosen
+  by the host (other hosts' styles are played), a room password when creating
+  a room, and per-team hedgehog numbers and colours.
+- **Downloadable content**: the add-ons listed on hedgewars.org (with
+  libcurl), downloaded into `~/config/settings/Hedgewars/Data`, where the
+  engine mounts them.
+
 Settings, the team, recordings and mission progress live in
 `~/config/settings/Hedgewars`.
 
@@ -60,7 +86,7 @@ Settings, the team, recordings and mission progress live in
 
 On Haiku R1/beta6 (x86_64), from the top of the tree (the package also runs on Renku OS):
 
-    pkgman install llvm19_clang mesa_devel glu_devel ffmpeg6_devel rust_bin
+    pkgman install llvm19_clang mesa_devel glu_devel ffmpeg6_devel rust_bin curl_devel openssl3_devel
     make -f haiku/Makefile                 # haiku/build/Hedgewars/
     make -f haiku/Makefile compare         # C engine against Pascal (needs fpc)
     sh haiku/package/build-hpkg.sh         # haiku/build/hedgewars-*.hpkg
@@ -68,8 +94,8 @@ On Haiku R1/beta6 (x86_64), from the top of the tree (the package also runs on R
 `launcher/schemes.h` is generated from the Qt frontend's scheme list:
 `python3 haiku/tools/gen-schemes.py > haiku/launcher/schemes.h`.
 
-`make -f haiku/Makefile test` runs the tests: the surface (blit and clipping)
-and statistics code on any system, and on Haiku also the launcher's progress file.
+`make -f haiku/Makefile test` runs the tests: the surface (blit and clipping),
+statistics, server protocol and add-on list code on any system, and on Haiku also the launcher's progress file.
 
 `HWHAIKU_DEBUG=1` makes the engine print every input event it receives.
 
@@ -90,7 +116,9 @@ and statistics code on any system, and on Haiku also the launcher's progress fil
 | Renku OS (x86_64, build00073, installed to disk in QEMU) | the same `.hpkg`, installed in the home folder: launcher, a match, sound |
 | Joysticks | written, not tested (no joystick in the VM) |
 | Video recording | works: a clip recorded with R in a match became an mp4 that MediaPlayer plays with sound; WebM at 24 frames/s checked the same way; size and bit rate are fixed |
-| Scheme and weapon set editors, network play | not in the launcher (the predefined schemes and weapon sets are) |
+| Network play | works: a net game between Haiku R1/beta6 and Renku (two QEMU machines) through the repo's `hedgewars-server` on the host: lobby, room, teams, hedgehog count, chat in the lobby, the room and the game, the game in sync to its end (the same statistics on both) and a demo kept on each; the room password and taken-nickname prompts checked; the registered-nickname password exchange is written, not tested (the local server has no accounts) |
+| Downloadable content | works: the list loads from hedgewars.org and a package (Ready Timer) lands in the Data folder, on Renku; the launcher's own menus don't list what add-ons bring (the engine uses them) |
+| Scheme and weapon set editors | not in the launcher (the predefined schemes and weapon sets are) |
 | App icon | HVIF, from `tools/make-icon.py` |
 | arm64 | not built: Renku OS arm64 (hrev60072_940) has no OpenGL (no Mesa in its ports repository, no OpenGL kit in the system), which the engine draws with; Rust has no aarch64 Haiku target either (it would need a custom target and a nightly toolchain). Free Pascal is no longer needed |
 
@@ -108,6 +136,8 @@ with Tab, and no clipping with a 15 pt system font. Where it deviates:
 - Flags, graves and forts are listed by their file names, without pictures.
 - Mission and campaign lists follow the game's order, not the alphabet.
 - No Help menu: Hedgewars has no offline manual.
+- The network game's lobby and room have no default button: Enter sends
+  the line typed in their chat fields.
 
 Known issue: `tests/lua/luaAPI/gravity_get_set.lua` misses its tolerance
 by 0.5 px, the same with and without video, so it's in engine physics,

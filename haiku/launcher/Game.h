@@ -41,6 +41,11 @@ struct Game {
 	std::string videoFormat = "mp4", videoCodec = "mpeg4", audioCodec = "aac";	// ffmpeg names
 	int videoFps = 30;
 	std::function<void(float)> progress;	// 0..1, from the engine's thread
+	// a net game (Net.cpp): more engine arguments, engine messages that arrive on
+	// netIn, and where the engine's game messages and chat lines go
+	std::vector<std::string> args;
+	int netIn = -1;
+	std::function<void(const std::string&)> toNet, chat;
 };
 
 struct Outcome {
