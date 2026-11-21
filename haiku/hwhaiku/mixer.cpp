@@ -7,6 +7,10 @@
 #include <MediaFile.h>
 #include <MediaTrack.h>
 #include <SoundPlayer.h>
+#ifdef __VOS__
+#include <Entry.h>
+#include <unistd.h>
+#endif
 
 #include <pthread.h>
 #include <stdlib.h>
@@ -141,7 +145,12 @@ HW_API int Mix_OpenAudio(int frequency, Uint16, int, int chunksize)
 	fmt.format = media_raw_audio_format::B_AUDIO_SHORT;
 	fmt.byte_order = B_MEDIA_HOST_ENDIAN;
 	fmt.buffer_size = chunksize * 4;
+#ifdef __VOS__
+	BMediaFormat format(fmt);	// VitruvianOS's media2 takes a BMediaFormat
+	sPlayer = new BSoundPlayer(&format, "Hedgewars", mix);
+#else
 	sPlayer = new BSoundPlayer(&fmt, "Hedgewars", mix);
+#endif
 	if (sPlayer->InitCheck() != B_OK) {
 		delete sPlayer;
 		sPlayer = NULL;
@@ -169,8 +178,27 @@ static int16_t* decode(SDL_RWops* rw, bool freesrc, size_t* outFrames)
 		return NULL;
 	size_t size;
 	void* data = hw_read_all(rw, &size, freesrc);
+#ifdef __VOS__
+	// media2 opens files only, not memory: the sound goes through a temporary file
+	struct TempFile {
+		char path[32] = "/tmp/hw-sound-XXXXXX";
+		~TempFile() { unlink(path); }
+	} temp;
+	int fd = mkstemp(temp.path);
+	bool written = fd >= 0 && write(fd, data, size) == (ssize_t)size;
+	if (fd >= 0)
+		close(fd);
+	entry_ref ref;
+	if (!written || get_ref_for_path(temp.path, &ref) != B_OK) {
+		free(data);
+		SDL_SetError("can't decode sound");
+		return NULL;
+	}
+	BMediaFile file(&ref);
+#else
 	BMemoryIO io(data, size);
 	BMediaFile file(&io);
+#endif
 	BMediaTrack* track = NULL;
 	media_format fmt;
 	for (int32 i = 0; file.InitCheck() == B_OK && i < file.CountTracks(); i++) {
@@ -179,7 +207,15 @@ static int16_t* decode(SDL_RWops* rw, bool freesrc, size_t* outFrames)
 		fmt.type = B_MEDIA_RAW_AUDIO;
 		fmt.u.raw_audio.format = media_raw_audio_format::B_AUDIO_SHORT;
 		fmt.u.raw_audio.byte_order = B_MEDIA_HOST_ENDIAN;
-		if (t->DecodedFormat(&fmt) == B_OK && fmt.type == B_MEDIA_RAW_AUDIO
+#ifdef __VOS__
+		BMediaFormat wanted;
+		wanted.format = fmt;
+		bool decoded = t->DecodedFormat(&wanted) == B_OK;
+		fmt = wanted.format;
+#else
+		bool decoded = t->DecodedFormat(&fmt) == B_OK;
+#endif
+		if (decoded && fmt.type == B_MEDIA_RAW_AUDIO
 			&& fmt.u.raw_audio.format == media_raw_audio_format::B_AUDIO_SHORT) {
 			track = t;
 			break;

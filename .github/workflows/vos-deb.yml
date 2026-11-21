@@ -1,0 +1,78 @@
+name: VitruvianOS deb
+
+# Hedgewars .debs for VitruvianOS (a BeOS-like OS based on Linux), amd64 and arm64, each
+# built natively in a Debian trixie container (VitruvianOS 0.6's userland, glibc 2.41) on
+# GitHub's ubuntu-24.04 / ubuntu-24.04-arm runners. The link-time V\OS SDK is built from
+# haiku/vos/ and cached per architecture. Run by hand (gh workflow run vos-deb.yml --ref
+# haiku); the .debs are artifacts, attached to a release only after they're tested.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deb:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    container: debian:trixie
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          # VitruvianOS's own build deps (its ccpp-arm64.yml) for the kits the SDK builds,
+          # then the game's: clang (the C engine), GL, ffmpeg, curl, OpenSSL, zlib.
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates git curl file python3 attr dpkg-dev xz-utils \
+            cmake ninja-build build-essential bison flex libfl-dev m4 pkg-config \
+            zlib1g-dev libicu-dev libfreetype6-dev libpng-dev libjpeg-dev libgif-dev \
+            libtiff-dev libwebp-dev libicns-dev libopenexr-dev libdrm-dev libinput-dev \
+            libevdev-dev libseat-dev libelf-dev libncurses-dev libpam0g-dev libglib2.0-dev \
+            libudev-dev libsystemd-dev libblkid-dev libxkbcommon-dev \
+            libgl-dev libegl-dev libgles-dev libpipewire-0.3-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            clang libavcodec-dev libavformat-dev libavutil-dev libswresample-dev \
+            libcurl4-openssl-dev libssl-dev
+
+      - name: Install Rust
+        run: |
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/checkout@v4
+
+      - name: Cache V\OS SDK
+        uses: actions/cache@v4
+        with:
+          path: /opt/vos-sdk
+          key: vos-sdk-0.6.2-${{ matrix.arch }}-${{ hashFiles('haiku/vos/make-sdk.sh', 'haiku/vos/*.patch') }}-debian-trixie
+
+      - name: Build V\OS SDK
+        run: |
+          [ -f /opt/vos-sdk/sdk/env.sh ] || sh haiku/vos/make-sdk.sh /opt/vos-sdk
+
+      - name: Tests
+        run: make -f haiku/Makefile test TEST_FLAGS=
+
+      - name: Build .deb
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          . /opt/vos-sdk/sdk/env.sh
+          sh haiku/vos/build-deb.sh
+          DEB=$(ls hedgewars_*_${{ matrix.arch }}.deb)
+          dpkg-deb -I "$DEB"
+          file haiku/build/deb/*/system/apps/Hedgewars/Hedgewars haiku/build/deb/*/system/apps/Hedgewars/hwengine
+          echo "glibc needed: $(objdump -T haiku/build/deb/*/system/apps/Hedgewars/hwengine | grep -oE 'GLIBC_[0-9.]+' | sort -Vu | tail -1)"
+          sha256sum "$DEB"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.arch }}
+          path: hedgewars_*_${{ matrix.arch }}.deb

@@ -2,6 +2,20 @@
 // joystick events.
 #include "hwhaiku.h"
 
+#ifdef __VOS__
+// VitruvianOS has no joystick kit (the Device Kit): no joysticks there.
+struct SDL_Joystick {};
+HW_API int SDL_NumJoysticks() { return 0; }
+HW_API const char* SDL_JoystickNameForIndex(int) { return NULL; }
+HW_API SDL_Joystick* SDL_JoystickOpen(int) { return NULL; }
+HW_API void SDL_JoystickClose(SDL_Joystick*) {}
+HW_API int SDL_JoystickNumAxes(SDL_Joystick*) { return 0; }
+HW_API int SDL_JoystickNumHats(SDL_Joystick*) { return 0; }
+HW_API int SDL_JoystickNumButtons(SDL_Joystick*) { return 0; }
+HW_API int SDL_JoystickEventState(int) { return 0; }
+void hw_joystick_poll() {}
+#else
+
 #include <Joystick.h>
 #include <String.h>
 
@@ -128,3 +142,4 @@ void hw_joystick_poll()
 		j->buttonValues = buttons;
 	}
 }
+#endif	// __VOS__
