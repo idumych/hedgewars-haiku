@@ -349,7 +349,8 @@ public:
 	void ShowCard(int i)
 	{
 		fCards->SetVisibleItem(i);
-		SetDefaultButton(i == 0 ? fConnect : i == 1 ? fJoin : fStart);
+		// only the first card: Enter in the chat fields sends the line
+		SetDefaultButton(i == 0 ? fConnect : NULL);
 		if (i == 1)
 			fLobbyEntry->MakeFocus();
 		else if (i == 2)
@@ -659,6 +660,8 @@ public:
 					// shortcut: the master sets one number for all teams; Qt sets each team's
 					if (cmd == "HH_NUM" && fChief && t.hogs != fHogs->Value())
 						SetHogs(t);
+					else if (cmd == "HH_NUM" && !fChief)
+						fHogs->SetValue(t.hogs);
 				}
 			FillTeams();
 		} else if (cmd == "CFG" && n > 2) {
@@ -860,7 +863,7 @@ public:
 			delete item;
 		for (const net::Team& t : fTeamList) {
 			std::string label = t.name + " (" + (t.remote ? t.owner : std::string("you")) + "), "
-				+ std::to_string(t.hogs) + " hedgehogs, " + colors[t.color >= 0 && t.color < 9 ? t.color : 0];
+				+ std::to_string(t.hogs) + (t.hogs == 1 ? " hedgehog, " : " hedgehogs, ") + colors[t.color >= 0 && t.color < 9 ? t.color : 0];
 			fTeams->AddItem(new BStringItem(label.c_str()));
 		}
 		fTeamButton->SetLabel(MyTeamPlays() ? "Remove my team" : "Add my team");
@@ -1036,6 +1039,8 @@ public:
 				break;
 			case kMsgReady: Send({"TOGGLE_READY"}); break;
 			case kMsgHogs:
+				if (!fChief)
+					break;
 				for (net::Team& t : fTeamList)
 					SetHogs(t);
 				FillTeams();
