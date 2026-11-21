@@ -91,7 +91,7 @@ and statistics code on any system, and on Haiku also the launcher's progress fil
 | Video recording | works: a clip recorded with R in a match became an mp4 that MediaPlayer plays with sound; the format, size and frame rate are fixed |
 | Scheme and weapon set editors, network play | not in the launcher (the predefined schemes and weapon sets are) |
 | App icon | HVIF, from `tools/make-icon.py` |
-| arm64 | not built |
+| arm64 | not built: Renku OS arm64 (hrev60072_940) has no OpenGL (no Mesa in its ports repository, no OpenGL kit in the system), which the engine draws with; Rust has no aarch64 Haiku target either (it would need a custom target and a nightly toolchain). Free Pascal is no longer needed |
 
 ## Interface guidelines
 
