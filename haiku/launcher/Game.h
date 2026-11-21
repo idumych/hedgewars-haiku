@@ -34,7 +34,6 @@ struct Game {
 	std::string config;		// sent when the engine asks for it
 	std::string replay;		// a recording, sent as soon as the engine connects
 	std::string varPrefix;	// "Mission X/" or "Campaign Y/": where script variables live
-	bool fullscreen = false, sound = true, music = true;
 };
 
 struct Outcome {

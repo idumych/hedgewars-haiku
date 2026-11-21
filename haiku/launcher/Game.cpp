@@ -1,6 +1,7 @@
 // Runs hwengine with --internal --port and answers its IPC requests, as
 // frontend-qt6/game.cpp and net/tcpBase.cpp do.
 #include "Game.h"
+#include "Settings.h"
 
 #include <Application.h>
 #include <Directory.h>
@@ -13,7 +14,6 @@
 #include <PathFinder.h>
 #include <StringList.h>
 #include <Roster.h>
-#include <Screen.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -249,17 +249,10 @@ Outcome run_game(const Game& g)
 	}
 	std::string port = std::to_string(ntohs(sa.sin_port));
 	std::string engine = BPath(gAppDir.Path(), "hwengine").Path();
-	BRect screen = BScreen().Frame();
-	std::string sw = std::to_string((int)screen.Width() + 1), sh = std::to_string((int)screen.Height() + 1);
 	std::vector<std::string> args = {engine, "--internal", "--port", port,
-		"--prefix", gDataDir.Path(), "--user-prefix", gUserDir.Path(), "--locale", "en.txt",
-		"--fullscreen-width", sw, "--fullscreen-height", sh, "--width", "1024", "--height", "768"};
-	if (g.fullscreen)
-		args.push_back("--fullscreen");
-	if (!g.sound)
-		args.push_back("--nosound");
-	if (!g.music)
-		args.push_back("--nomusic");
+		"--prefix", gDataDir.Path(), "--user-prefix", gUserDir.Path()};
+	for (const std::string& a : engine_args())	// the Settings window's
+		args.push_back(a);
 	std::vector<char*> argv;
 	for (std::string& a : args)
 		argv.push_back(&a[0]);

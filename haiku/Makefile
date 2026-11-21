@@ -83,15 +83,16 @@ $(B)/pascal/hwengine: $(ENGINE_SRCS) $(OBJ)/config.inc $(ENGINE_LIBS)
 		-Fi$(OBJ) -Fuhedgewars -FU$(B)/pascal/obj -Fl$(LIB) \
 		-o$(CURDIR)/$@ hedgewars/hwengine.pas
 
-$(APP)/Hedgewars: $(wildcard haiku/launcher/*.cpp haiku/launcher/*.h haiku/launcher/*.rdef) frontend-qt6/weapons.h
+$(APP)/Hedgewars: $(wildcard haiku/launcher/*.cpp haiku/launcher/*.h haiku/launcher/*.rdef) frontend-qt6/weapons.h \
+		haiku/hwhaiku/rawkeys.h
 	@mkdir -p $(OBJ)
 	$(CXX) -O2 -g -std=c++17 -Wall -Ifrontend-qt6 -I$(HEADERS)/private/interface -DHW_DATADIR='"$(DATADIR)"' \
-		-o $@ haiku/launcher/*.cpp -lbe -lnetwork -ltranslation
+		-o $@ haiku/launcher/*.cpp -lbe -lnetwork -ltranslation -ltracker -lz
 	rc -I . -o $(OBJ)/Hedgewars.rsrc haiku/launcher/*.rdef	# -I: where import finds files
 	xres -o $@ $(OBJ)/Hedgewars.rsrc
 	mimeset -f $@
 
-# host tests (surface code, stats parsing) run anywhere with a C++ compiler
+# host tests (surface code, stats parsing, INI files, drawn maps) run anywhere with a C++ compiler
 ifneq ($(shell uname -s),Haiku)
 TEST_FLAGS := -fsanitize=address,undefined	# not available on Haiku
 endif
@@ -103,9 +104,13 @@ test:
 	$(CXX) -std=c++17 -Wall -g $(TEST_FLAGS) -Ihaiku/launcher \
 		-o $(OBJ)/stats_test haiku/tests/stats_test.cpp haiku/launcher/StatsData.cpp
 	$(OBJ)/stats_test
+	$(CXX) -std=c++17 -Wall -g $(TEST_FLAGS) -Ihaiku/launcher -o $(OBJ)/ini_test haiku/tests/ini_test.cpp \
+		haiku/launcher/Ini.cpp haiku/launcher/Binds.cpp haiku/launcher/DrawnMap.cpp -lz
+	$(OBJ)/ini_test
 ifeq ($(shell uname -s),Haiku)
 	$(CXX) -std=c++17 -Wall -Ihaiku/launcher -o $(OBJ)/progress_test haiku/tests/progress_test.cpp \
-		haiku/launcher/Game.cpp -lbe -lnetwork
+		haiku/launcher/Game.cpp haiku/launcher/Settings.cpp haiku/launcher/BindEditor.cpp \
+		haiku/launcher/Binds.cpp haiku/launcher/Ini.cpp -lbe -lnetwork
 	$(OBJ)/progress_test
 endif
 
