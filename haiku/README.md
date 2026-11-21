@@ -37,7 +37,7 @@ frontend's local pages, in tabs:
 
 - **Match**: opponent (the computer at five levels, or a second player),
   hedgehogs per team, the 16 predefined schemes, the weapon sets, game
-  styles, generated or fixed maps, theme
+  styles, generated, hand-drawn or fixed maps, theme
 - **Missions**: training, challenges and scenarios, with their pictures and
   descriptions; won missions are marked
 - **Campaigns**: the missions your progress has unlocked
@@ -51,7 +51,9 @@ frontend's local pages, in tabs:
   `Videos/` at 1280×720, as MP4 (MPEG-4, AAC), WebM (VP8, Vorbis) or Ogg
   (Theora, Vorbis), at 24, 30 or 60 frames/s. The list shows each video's
   picture and map; Play opens it in MediaPlayer
-- **Team**: name, flag, grave, fort, voice, hedgehog names and hats
+- **Team**: several teams, each with name, player (human or computer
+  level), flag, grave, fort, voice, hedgehog names and hats, and its own
+  keys; kept as `Teams/<name>.hwt`, the Qt frontend's files
 
 and, from the Hedgewars menu, two windows:
 
@@ -79,7 +81,15 @@ and, from the Hedgewars menu, two windows:
   libcurl), downloaded into `~/config/settings/Hedgewars/Data`, where the
   engine mounts them.
 
-Settings, the team, recordings and mission progress live in
+**Settings…** (Alt+,) sets the language, window size, full screen,
+quality, weapon descriptions, frame rate, damage display, sound, music,
+volume and the keys (press a key or mouse button to bind it). They're kept
+in `settings.ini` with the Qt frontend's keys; the engine reads the key
+bindings from there and from the team files itself. **Edit drawing…**
+draws a hand-drawn map (pencil, rectangle, ellipse, eraser, line width,
+undo, clear; opens and saves the Qt frontend's `.hwmap` files).
+
+Settings, teams, recordings and mission progress live in
 `~/config/settings/Hedgewars`.
 
 ## Build
@@ -95,7 +105,8 @@ On Haiku R1/beta6 (x86_64), from the top of the tree (the package also runs on R
 `python3 haiku/tools/gen-schemes.py > haiku/launcher/schemes.h`.
 
 `make -f haiku/Makefile test` runs the tests: the surface (blit and clipping),
-statistics, server protocol and add-on list code on any system, and on Haiku also the launcher's progress file.
+statistics, server protocol, add-on list, INI file and drawn map code on any system, and on Haiku also the
+launcher's progress file.
 
 `HWHAIKU_DEBUG=1` makes the engine print every input event it receives.
 
@@ -115,6 +126,10 @@ statistics, server protocol and add-on list code on any system, and on Haiku als
 | `.hpkg` | installs and plays: app in `apps/Hedgewars`, data in `data/hedgewars`, Deskbar entry |
 | Renku OS (x86_64, build00073, installed to disk in QEMU) | the same `.hpkg`, installed in the home folder: launcher, a match, sound |
 | Joysticks | written, not tested (no joystick in the VM) |
+| Settings window | works: window size 800 × 600 and the frame rate showed in the game; German mission names in the launcher and `--locale de.txt` to the engine; quality, volume, damage display and tooltips are passed as the Qt frontend passes them, not each checked by eye |
+| Key bindings | works: Walk left set to A in Settings walks with A and not with Left; a team's own key (J) works on its turn while the other team keeps A |
+| Teams | works: several teams in `Teams/*.hwt`, the old launcher's team carried over; the Qt frontend's achievements in a team file are kept, not used |
+| Hand-drawn maps | works: drawn with pencil, rectangle and eraser, saved as `.hwmap`, played as a match on that land; opening a `.hwmap` from the Qt frontend is checked by the host test (decodes and encodes back to the same bytes) |
 | Video recording | works: a clip recorded with R in a match became an mp4 that MediaPlayer plays with sound; WebM at 24 frames/s checked the same way; size and bit rate are fixed |
 | Network play | works: a net game between Haiku R1/beta6 and Renku (two QEMU machines) through the repo's `hedgewars-server` on the host: lobby, room, teams, hedgehog count, chat in the lobby, the room and the game, the game in sync to its end (the same statistics on both) and a demo kept on each; the room password and taken-nickname prompts checked; the registered-nickname password exchange is written, not tested (the local server has no accounts) |
 | Downloadable content | works: the list loads from hedgewars.org and a package (Ready Timer) lands in the Data folder, on Renku; the launcher's own menus don't list what add-ons bring (the engine uses them) |
@@ -129,8 +144,10 @@ say how to fix the problem, the window's size and place remembered, a default
 button on each tab, dates in the system's format, every control reachable
 with Tab, and no clipping with a 15 pt system font. Where it deviates:
 
-- **Settings** is a menu of three on/off items rather than a "Settings…"
-  window, since that is all there is to set.
+- The Settings window has no proxy or network settings (no network play),
+  no video recording, stereoscopy or zoom, and keeps the Qt frontend's
+  `settings.ini` rather than a flattened `BMessage`, because the engine reads
+  its key bindings from that file.
 - Scheme, weapon set and map names keep the game's capitals ("Pro Mode"):
   they are names, and other Hedgewars players know them that way.
 - Flags, graves and forts are listed by their file names, without pictures.

@@ -4,5 +4,5 @@
 
 #include "Game.h"
 
-// team: the player's team; prefs: full screen, sound and music for the games
+// team: the player's team; prefs: a template for the games (engine settings come from engine_args())
 void open_net_window(const TeamInfo& team, const Game& prefs);

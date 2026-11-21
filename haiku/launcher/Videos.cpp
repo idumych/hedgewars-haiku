@@ -219,7 +219,7 @@ static int32 render_thread(void* data)
 	g.videoCodec = kFormats[r->format].video;
 	g.audioCodec = kFormats[r->format].audio;
 	g.videoFps = kFps[r->fps];
-	g.sound = BEntry(user_path("VideoTemp/" + r->prefix + ".sw").Path()).Exists();
+	g.videoSound = BEntry(user_path("VideoTemp/" + r->prefix + ".sw").Path()).Exists();
 	BMessenger to = r->to;
 	std::string prefix = r->prefix;
 	g.progress = [to, prefix](float f) {

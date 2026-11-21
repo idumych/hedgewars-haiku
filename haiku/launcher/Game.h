@@ -35,11 +35,11 @@ struct Game {
 	std::string config;		// sent when the engine asks for it
 	std::string replay;		// a recording, sent as soon as the engine connects
 	std::string varPrefix;	// "Mission X/" or "Campaign Y/": where script variables live
-	bool fullscreen = false, sound = true, music = true;
 	// set: render the replay off screen into VideoTemp/<videoPrefix>.<format> (HWRecorder)
 	std::string videoPrefix;
 	std::string videoFormat = "mp4", videoCodec = "mpeg4", audioCodec = "aac";	// ffmpeg names
 	int videoFps = 30;
+	bool videoSound = true;	// the game's sound was recorded
 	std::function<void(float)> progress;	// 0..1, from the engine's thread
 	// a net game (Net.cpp): more engine arguments, engine messages that arrive on
 	// netIn, and where the engine's game messages and chat lines go
