@@ -1,6 +1,7 @@
 // Runs hwengine with --internal --port and answers its IPC requests, as
 // frontend-qt6/game.cpp and net/tcpBase.cpp do.
 #include "Game.h"
+#include "DataFS.h"
 #include "Settings.h"
 
 #include <Application.h>
@@ -64,11 +65,16 @@ bool find_data()
 	gUserDir.Append("Hedgewars");
 	create_directory(BPath(gUserDir.Path(), "Demos").Path(), 0755);
 	create_directory(BPath(gUserDir.Path(), "Saves").Path(), 0755);
+	// shortcut: mounted once; add-ons downloaded later show up after a restart
+	if (gDataDir.InitCheck() == B_OK)
+		datafs_mount({gDataDir.Path(), BPath(gUserDir.Path(), "Data").Path()});
 	return gDataDir.InitCheck() == B_OK;
 }
 
 std::vector<std::string> list_dir(const char* sub, const char* suffix, bool dirs, bool user)
 {
+	if (!user)	// with what add-ons bring
+		return datafs_list(sub, suffix, dirs);
 	std::vector<std::string> out;
 	BDirectory d(BPath(user ? gUserDir.Path() : gDataDir.Path(), sub).Path());
 	BEntry e;
@@ -91,18 +97,26 @@ std::vector<std::string> list_dir(const char* sub, const char* suffix, bool dirs
 	return out;
 }
 
+std::vector<std::string> match_maps()
+{
+	std::vector<std::string> out;
+	for (const std::string& m : list_dir("Maps", NULL, true))
+		if (m != "test" && datafs_exists("Maps/" + m + "/map.cfg") && !datafs_exists("Maps/" + m + "/map.lua"))
+			out.push_back(m);
+	return out;
+}
+
 std::vector<std::string> read_lines(const char* dataPath)
 {
 	std::vector<std::string> out;
-	FILE* f = fopen(BPath(gDataDir.Path(), dataPath).Path(), "r");
-	char line[1024];
-	while (f && fgets(line, sizeof(line), f)) {
-		line[strcspn(line, "\r\n")] = 0;
-		if (line[0])
-			out.push_back(line);
+	std::string text, line;
+	datafs_read(dataPath, text);
+	for (size_t at = 0; at < text.size(); at += line.size() + 1) {
+		line = text.substr(at, text.find('\n', at) - at);
+		std::string l = line.substr(0, line.find('\r'));
+		if (!l.empty())
+			out.push_back(l);
 	}
-	if (f)
-		fclose(f);
 	return out;
 }
 

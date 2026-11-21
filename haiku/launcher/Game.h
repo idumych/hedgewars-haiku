@@ -16,6 +16,8 @@ bool find_data();
 // names in a data folder ("Themes"), or in the user's folder with user=true
 std::vector<std::string> list_dir(const char* sub, const char* suffix, bool dirs, bool user = false);
 std::vector<std::string> read_lines(const char* dataPath);
+// the fixed maps for a match: not missions (with a map.lua), not the test map
+std::vector<std::string> match_maps();
 // "key=value" files (Locale/missions_en.txt) and INI files with "Section/key"
 std::string ini_value(const char* dataPath, const std::string& key, const std::string& fallback = "");
 

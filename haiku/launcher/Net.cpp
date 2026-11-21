@@ -409,13 +409,7 @@ public:
 		std::vector<std::string> maps;
 		for (const auto& g : kGenerated)
 			maps.push_back(g.label);
-		for (const std::string& m : list_dir("Maps", NULL, true)) {
-			BPath dir(gDataDir.Path(), ("Maps/" + m).c_str());
-			// as on the Match tab: no missions, no test map
-			if (m != "test" && BEntry(BPath(dir.Path(), "map.cfg").Path()).Exists()
-				&& !BEntry(BPath(dir.Path(), "map.lua").Path()).Exists())
-				fMaps.push_back(m);
-		}
+		fMaps = match_maps();
 		for (const std::string& m : fMaps)
 			maps.push_back(spaced(m));
 		fMap = popup("Map:", maps);
