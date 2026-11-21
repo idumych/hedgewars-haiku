@@ -10,6 +10,8 @@
 #include <Autolock.h>
 #include <Locker.h>
 #include <Message.h>
+#include <PathFinder.h>
+#include <StringList.h>
 #include <Roster.h>
 #include <Screen.h>
 
@@ -44,9 +46,11 @@ bool find_data()
 	if (const char* env = getenv("HEDGEWARS_DATA"))
 		candidates.push_back(BPath(env));
 	candidates.push_back(BPath(gAppDir.Path(), "Data"));
-	BPath sys;
-	if (find_directory(B_SYSTEM_DATA_DIRECTORY, &sys) == B_OK)
-		candidates.push_back(BPath(sys.Path(), "hedgewars/Data"));
+	// the package's data, wherever it's installed (system or home)
+	BStringList found;
+	BPathFinder::FindPaths(B_FIND_PATH_DATA_DIRECTORY, "hedgewars/Data", found);
+	for (int32 i = 0; i < found.CountStrings(); i++)
+		candidates.push_back(BPath(found.StringAt(i)));
 #ifdef HW_DATADIR
 	candidates.push_back(BPath(HW_DATADIR "/Data"));
 #endif

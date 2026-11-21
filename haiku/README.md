@@ -15,15 +15,32 @@ SDL2, SDL_ttf, SDL_mixer, SDL_image and SDL_net entry points that
 
 `SDLh.pas` points its five library names at `libhwhaiku` on Haiku; nothing
 else in the engine changes. A native launcher (`launcher/`) replaces the Qt
-frontend for local games.
+frontend's local pages, in tabs:
+
+- **Match**: opponent (the computer at five levels, or a second player),
+  hedgehogs per team, the 16 predefined schemes, the weapon sets, game
+  styles, generated or fixed maps, theme
+- **Missions**: training, challenges and scenarios, with their pictures and
+  descriptions; won missions are marked
+- **Campaigns**: the missions your progress has unlocked
+- **Recordings**: interrupted games are kept as saved games and finished
+  ones as demos, the way the Qt frontend records them; play them again or
+  move them to the Trash
+- **Team**: name, flag, grave, fort, voice, hedgehog names and hats
+
+Settings, the team, recordings and mission progress live in
+`~/config/settings/Hedgewars`.
 
 ## Build
 
-On Haiku R1/beta6 (x86_64), from the top of the tree:
+On Haiku R1/beta6 (x86_64), from the top of the tree (the package also runs on Renku OS):
 
     pkgman install fpc mesa_devel glu_devel rust_bin
     make -f haiku/Makefile                 # haiku/build/Hedgewars/
     sh haiku/package/build-hpkg.sh         # haiku/build/hedgewars-*.hpkg
+
+`launcher/schemes.h` is generated from the Qt frontend's scheme list:
+`python3 haiku/tools/gen-schemes.py > haiku/launcher/schemes.h`.
 
 `HWHAIKU_DEBUG=1` makes the engine print every input event it receives.
 
@@ -35,11 +52,15 @@ On Haiku R1/beta6 (x86_64), from the top of the tree:
 | Rendering (llvmpipe in a VM) | works |
 | Keyboard and mouse | works; keys arrive as SDL scancodes |
 | Sound effects, voices, music | works (checked from the VM's captured audio) |
-| Local game: you against the computer, or two players on one computer | works, from the launcher |
+| Local game: you against the computer, or two players on one computer | works, from the launcher; checked with Default and Pro Mode, random and fixed (Bath) maps |
+| Training missions | works (Basic Movement: the hedgehog walks, the mission advances) |
+| Saved games and demos | works: quitting a game keeps it, and playing it resumes where it stopped |
+| Campaigns, challenges, scenarios, styles | listed and set up like the Qt frontend; not each one played through |
 | `.hpkg` | installs and plays: app in `apps/Hedgewars`, data in `data/hedgewars`, Deskbar entry |
+| Renku OS (x86_64, build00073, installed to disk in QEMU) | the same `.hpkg`, installed in the home folder: launcher, a match, sound |
 | Joysticks | written, not tested (no joystick in the VM) |
-| Schemes, weapon sets, team editor, missions, campaigns, training, saved games, network play | not in the launcher yet (the Qt frontend's other pages) |
-| App icon | none yet |
+| Scheme and weapon set editors, statistics after a game, video recording, network play | not in the launcher (the predefined schemes and weapon sets are) |
+| App icon | HVIF, from `tools/make-icon.py` |
 | arm64 | not built |
 
 Known issue: `tests/lua/luaAPI/gravity_get_set.lua` misses its tolerance
