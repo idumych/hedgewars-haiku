@@ -19,7 +19,7 @@ PHYSFS_SRCS  := $(addprefix misc/libphysfs/,physfs.c physfs_byteorder.c physfs_u
 	platform_posix.c platform_unix.c) $(wildcard misc/libphysfs/archiver_*.c)
 ENGINE_SRCS  := $(wildcard hedgewars/*.pas) hedgewars/SDLh.pas
 
-all: $(APP)/hwengine
+all: $(APP)/hwengine $(APP)/Hedgewars
 
 $(LIB)/libhwhaiku.so: $(HWHAIKU_SRCS) haiku/hwhaiku/hwhaiku.h
 	@mkdir -p $(LIB)
@@ -60,6 +60,14 @@ $(APP)/hwengine: $(ENGINE_SRCS) $(OBJ)/config.inc $(LIB)/libhwhaiku.so $(LIB)/li
 	fpc -O2 -Si -Xs -Cs2000000 -B -fPIC -dSKIP_RESOURCES -dLUA_INTERNAL \
 		-Fi$(OBJ) -Fuhedgewars -FU$(OBJ) -Fl$(LIB) \
 		-o$(CURDIR)/$@ hedgewars/hwengine.pas
+
+$(APP)/Hedgewars: haiku/launcher/Launcher.cpp haiku/launcher/Hedgewars.rdef frontend-qt6/weapons.h
+	@mkdir -p $(OBJ)
+	$(CXX) -O2 -g -std=c++17 -Wall -Ifrontend-qt6 -I$(HEADERS)/private/interface -DHW_DATADIR='"$(DATADIR)"' \
+		-o $@ haiku/launcher/Launcher.cpp -lbe -lnetwork
+	rc -o $(OBJ)/Hedgewars.rsrc haiku/launcher/Hedgewars.rdef
+	xres -o $@ $(OBJ)/Hedgewars.rsrc
+	mimeset -f $@
 
 clean:
 	rm -rf $(B)
