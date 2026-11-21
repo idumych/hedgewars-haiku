@@ -122,12 +122,14 @@ $(APP)/Hedgewars: $(wildcard haiku/launcher/*.cpp haiku/launcher/*.h haiku/launc
 	$(CXX) -O2 -g -std=c++17 -Wall -Ifrontend-qt6 $(VOS_CFLAGS) -DHW_DATADIR='"$(DATADIR)"' \
 		-o $@ haiku/launcher/*.cpp $(LAUNCH_LIBS)
 ifneq ($(VOS_INC),)
-	python3 haiku/tools/inline-rdef.py $(OBJ)/Hedgewars.rdef haiku/launcher/*.rdef	# V\OS rc can't read imports
-	rc -o $(OBJ)/Hedgewars.rsrc $(OBJ)/Hedgewars.rdef
+	# V\OS's tools run its Storage Kit on Linux, which doesn't resolve relative paths
+	python3 haiku/tools/inline-rdef.py $(OBJ)/Hedgewars.rdef haiku/launcher/*.rdef
+	rc -o $(CURDIR)/$(OBJ)/Hedgewars.rsrc $(CURDIR)/$(OBJ)/Hedgewars.rdef
+	xres -o $(CURDIR)/$@ $(CURDIR)/$(OBJ)/Hedgewars.rsrc
 else
 	rc -I . -o $(OBJ)/Hedgewars.rsrc haiku/launcher/*.rdef	# -I: where import finds files
-endif
 	xres -o $@ $(OBJ)/Hedgewars.rsrc
+endif
 	$(MIMESET) $@
 
 # host tests (surface code, stats parsing, INI files, drawn maps) run anywhere with a C++ compiler

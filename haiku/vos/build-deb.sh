@@ -49,7 +49,8 @@ ln -s /system/apps/Hedgewars/Hedgewars "$PKG/usr/bin/hedgewars"
 STAGE="$BUILD/attrs"
 mkdir -p "$STAGE/system/apps/Hedgewars"
 : > "$STAGE/system/apps/Hedgewars/Hedgewars"
-resattr -O -o "$STAGE/system/apps/Hedgewars/Hedgewars" haiku/build/obj/Hedgewars.rsrc
+# absolute paths: V\OS's tools don't resolve relative ones on Linux
+resattr -O -o "$(pwd)/$STAGE/system/apps/Hedgewars/Hedgewars" "$(pwd)/haiku/build/obj/Hedgewars.rsrc"
 TYPE_HEX=534d494d$(printf '%s' application/x-vnd.Be-elfexecutable | od -A n -t x1 | tr -d ' \n')00
 python3 -c 'import os,sys; os.setxattr(sys.argv[1], "user.beos.BEOS:TYPE", bytes.fromhex(sys.argv[2]))' \
 	"$STAGE/system/apps/Hedgewars/Hedgewars" "$TYPE_HEX"
