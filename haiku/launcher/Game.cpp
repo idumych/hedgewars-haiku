@@ -222,6 +222,7 @@ static std::string save_recording(std::string rec, bool finished)
 	if (finished) {
 		replace_first(rec, "\x02TL", "\x02TD");
 		replace_first(rec, "\x02TS", "\x02TD");
+		replace_first(rec, "\x02TN", "\x02TD");
 		path = BPath(gUserDir.Path(), (std::string("Demos/") + stamp + "." + kProto + ".hwd").c_str()).Path();
 	} else {
 		replace_first(rec, "\x02TL", "\x02TS");
@@ -260,6 +261,7 @@ Outcome run_game(const Game& g)
 		args.push_back("--nosound");
 	if (!g.music)
 		args.push_back("--nomusic");
+	args.insert(args.end(), g.args.begin(), g.args.end());
 	std::vector<char*> argv;
 	for (std::string& a : args)
 		argv.push_back(&a[0]);
@@ -306,10 +308,20 @@ Outcome run_game(const Game& g)
 	if (!g.replay.empty())
 		send_all(g.replay);
 
-	std::string in;
+	std::string in, toNet;
 	char chunk[4096];
 	ssize_t got;
-	while ((got = recv(client, chunk, sizeof(chunk), 0)) > 0) {
+	pollfd fds[2] = {{client, POLLIN, 0}, {g.netIn, POLLIN, 0}};
+	while (poll(fds, g.netIn >= 0 ? 2 : 1, -1) > 0) {
+		if (fds[1].revents) {	// from the other players
+			if ((got = read(g.netIn, chunk, sizeof(chunk))) > 0)
+				send_all(std::string(chunk, got));
+			else
+				fds[1].fd = -1;
+			continue;
+		}
+		if ((got = recv(client, chunk, sizeof(chunk), 0)) <= 0)
+			break;
 		in.append(chunk, got);
 		while (!in.empty() && in.size() >= (size_t)(uint8)in[0] + 1) {
 			std::string raw = in.substr(0, (uint8)in[0] + 1);
@@ -325,7 +337,11 @@ Outcome run_game(const Game& g)
 				case 'q': case 'Q': case 'H': state = msg[0]; break;
 				case 'm': keepRecord = false; break;
 				case 'i': out.stats.push_back(msg.substr(1)); break;
-				case 's': case 'b': case 'W': case '~': break;
+				case 's':
+					if (g.chat)
+						g.chat(msg.substr(1));
+					break;
+				case 'b': case 'W': case '~': break;
 				case 'V': case 'v': {
 					// campaign and mission variables: "?name" asks, "!name value" stores
 					std::string body = msg.size() > 1 ? msg.substr(2) : "";
@@ -336,11 +352,16 @@ Outcome run_game(const Game& g)
 						set_progress(g.varPrefix + body.substr(0, body.find(' ')), body.substr(body.find(' ') + 1));
 					break;
 				}
-				default: record += raw;
+				default:
+					record += raw;
+					toNet += raw;
 			}
 			if (!reply.empty())
 				send_all(reply);
 		}
+		if (g.toNet && !toNet.empty())
+			g.toNet(toNet);
+		toNet.clear();
 	}
 	close(client);
 	int status;

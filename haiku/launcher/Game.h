@@ -6,6 +6,7 @@
 #include <Path.h>
 #include <SupportDefs.h>
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -35,6 +36,11 @@ struct Game {
 	std::string replay;		// a recording, sent as soon as the engine connects
 	std::string varPrefix;	// "Mission X/" or "Campaign Y/": where script variables live
 	bool fullscreen = false, sound = true, music = true;
+	// a net game (Net.cpp): more engine arguments, engine messages that arrive on
+	// netIn, and where the engine's game messages and chat lines go
+	std::vector<std::string> args;
+	int netIn = -1;
+	std::function<void(const std::string&)> toNet, chat;
 };
 
 struct Outcome {

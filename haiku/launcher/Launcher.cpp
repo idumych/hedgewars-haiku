@@ -34,7 +34,9 @@
 #include <string.h>
 #include <time.h>
 
+#include "Content.h"
 #include "Game.h"
+#include "Net.h"
 #include "Stats.h"
 #include "schemes.h"	// generated from frontend-qt6/model/gameSchemeModel.cpp
 #include "weapons.h"	// frontend-qt6
@@ -80,6 +82,7 @@ enum {
 	kMsgScheme = 'schm', kMsgStyle = 'styl', kMsgMap = 'map ', kMsgMissionKind = 'mkin',
 	kMsgMissionSel = 'msel', kMsgCampaign = 'camp', kMsgCampaignSel = 'csel',
 	kMsgRecordingSel = 'rsel', kMsgToggle = 'togl', kMsgTab = 'tab ',
+	kMsgNetGame = 'netg', kMsgContent = 'cont',
 };
 
 static BMessenger sWindow;
@@ -182,8 +185,15 @@ public:
 		BMenu* app = new BMenu("Hedgewars");
 		app->AddItem(new BMenuItem("About Hedgewars", new BMessage(B_ABOUT_REQUESTED)));
 		app->AddSeparatorItem();
+		BMenuItem* net = new BMenuItem("Network game…", new BMessage(kMsgNetGame));
+		BMenuItem* content = new BMenuItem("Downloadable content", new BMessage(kMsgContent));
+		app->AddItem(net);
+		app->AddItem(content);
+		app->AddSeparatorItem();
 		app->AddItem(new BMenuItem("Quit", new BMessage(B_QUIT_REQUESTED), 'Q'));
 		app->SetTargetForItems(be_app);
+		net->SetTarget(this);
+		content->SetTarget(this);
 		bar->AddItem(app);
 		BMenu* settings = new BMenu("Settings");
 		settings->AddItem(fFullscreen = new BMenuItem("Full screen", new BMessage(kMsgToggle)));
@@ -844,6 +854,16 @@ public:
 				break;
 			}
 			case kMsgTrashRecording: TrashRecording(); break;
+			case kMsgNetGame: {
+				FieldsToTeam();
+				Game prefs;
+				prefs.fullscreen = fFullscreen->IsMarked();
+				prefs.sound = fSound->IsMarked();
+				prefs.music = fMusic->IsMarked();
+				open_net_window(fTeam, prefs);
+				break;
+			}
+			case kMsgContent: open_content_window(); break;
 			case kMsgScheme: {
 				// as in the Qt frontend, a scheme picks the weapon set of the same name
 				Mark(fWeapons, MarkedLabel(fScheme).c_str());
