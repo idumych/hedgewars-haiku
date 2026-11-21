@@ -23,6 +23,7 @@
 #include <PopUpMenu.h>
 #include <ScrollView.h>
 #include <SeparatorItem.h>
+#include <Spinner.h>	// private/interface
 #include <StringView.h>
 #include <TextControl.h>
 #include <TextView.h>
@@ -50,6 +51,7 @@ enum {
 	kMsgLobbyChat = 'nlch', kMsgRoomChat = 'nrch', kMsgCreate = 'ncre', kMsgJoin = 'njoi',
 	kMsgLeave = 'nlea', kMsgTeam = 'ntea', kMsgReady = 'nrdy', kMsgStart = 'nsta',
 	kMsgSetting = 'nset', kMsgPrompt = 'nprm', kMsgNetGameOver = 'ngov', kMsgRoomSel = 'nrsl',
+	kMsgHogs = 'nhog',
 };
 
 // the generated maps: label, MAP, MAPGEN (mapContainer.cpp, MapModel.cpp)
@@ -120,25 +122,24 @@ static void append(BTextView* t, const std::string& line)
 	t->ScrollToOffset(t->TextLength());
 }
 
-// Asks for one line of text; posts kMsgPrompt with "kind" and "text" to the target
+// Asks for one line of text; posts kMsgPrompt with "kind", "text" and "cancel" to the target
 class PromptWindow : public BWindow {
 public:
-	PromptWindow(BWindow* over, const char* question, const char* kind, bool secret)
+	PromptWindow(BWindow* over, const char* question, const char* kind, bool secret, const char* action)
 		: BWindow(BRect(0, 0, 300, 100), "Hedgewars", B_MODAL_WINDOW_LOOK, B_MODAL_APP_WINDOW_FEEL,
 			B_NOT_RESIZABLE | B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS | B_CLOSE_ON_ESCAPE),
 		fTarget(over), fKind(kind)
 	{
 		fText = new BTextControl("", "", NULL);
 		fText->TextView()->HideTyping(secret);
-		BButton* ok = new BButton("OK", new BMessage(B_QUIT_REQUESTED));
-		ok->SetMessage(new BMessage('ok  '));
+		BButton* ok = new BButton(action, new BMessage('ok  '));
 		BLayoutBuilder::Group<>(this, B_VERTICAL)
 			.SetInsets(B_USE_WINDOW_SPACING)
 			.Add(new BStringView("question", question))
 			.Add(fText)
 			.AddGroup(B_HORIZONTAL)
 				.AddGlue()
-				.Add(new BButton("Cancel", new BMessage(B_QUIT_REQUESTED)))
+				.Add(new BButton("Cancel", new BMessage('cncl')))
 				.Add(ok)
 			.End();
 		SetDefaultButton(ok);
@@ -148,21 +149,36 @@ public:
 
 	void MessageReceived(BMessage* msg) override
 	{
-		if (msg->what != 'ok  ') {
+		if (msg->what != 'ok  ' && msg->what != 'cncl') {
 			BWindow::MessageReceived(msg);
 			return;
 		}
+		Answer(msg->what == 'cncl');
+		Quit();
+	}
+
+	bool QuitRequested() override	// closed, or Escape
+	{
+		if (!fAnswered)
+			Answer(true);
+		return true;
+	}
+
+	void Answer(bool cancel)
+	{
 		BMessage m(kMsgPrompt);
 		m.AddString("kind", fKind.c_str());
 		m.AddString("text", fText->Text());
+		m.AddBool("cancel", cancel);
 		fTarget.SendMessage(&m);
-		Quit();
+		fAnswered = true;
 	}
 
 private:
 	BMessenger fTarget;
 	std::string fKind;
 	BTextControl* fText;
+	bool fAnswered = false;
 };
 
 class NetWindow : public BWindow {
@@ -284,6 +300,9 @@ public:
 			if (ini_value(("Themes/" + t + "/theme.cfg").c_str(), "hidden ").find("true") == std::string::npos)
 				themes.push_back(t);
 		fTheme = popup("Theme:", themes);
+		fHogs = new BSpinner("hogs", "Hedgehogs per team:", new BMessage(kMsgHogs));
+		fHogs->SetRange(1, 8);
+		fHogs->SetValue(4);
 		show_value(fTheme, "Nature");
 		BScrollView* cs;
 		fRoomChat = chat_view(&cs);
@@ -309,6 +328,8 @@ public:
 						.AddMenuField(fWeapons, 0, 1)
 						.AddMenuField(fMap, 0, 2)
 						.AddMenuField(fTheme, 0, 3)
+						.Add(fHogs->CreateLabelLayoutItem(), 0, 4)
+						.Add(fHogs->CreateTextViewLayoutItem(), 1, 4)
 					.End()
 					.AddGlue()
 				.End()
@@ -510,13 +531,13 @@ public:
 			fByeReason = n > 1 ? m[1] : "";
 		} else if (cmd == "NOTICE" && n > 1) {
 			if (m[1] == "0")
-				(new PromptWindow(this, "That nickname is taken. Choose another:", "nick", false))->Show();
+				(new PromptWindow(this, "That nickname is taken. Choose another:", "nick", false, "Use nickname"))->Show();
 			else if (m[1] == "2")
-				(new PromptWindow(this, ("The room " + fRoom + " has a password:").c_str(), "room password", true))->Show();
+				(new PromptWindow(this, ("The room " + fRoom + " has a password:").c_str(), "room password", true, "Join room"))->Show();
 		} else if (cmd == "ASKPASSWORD" && n > 1) {
 			fServerSalt = m[1];
 			(new PromptWindow(this, ("The nickname " + fMyNick + " is registered. Its password:").c_str(),
-				"password", true))->Show();
+				"password", true, "Log in"))->Show();
 		} else if (cmd == "SERVER_AUTH" && n > 1) {
 			if (m[1] != fServerHash) {
 				fByeReason = "The server could not prove it knows your password.";
@@ -633,8 +654,12 @@ public:
 			FillTeams();
 		} else if ((cmd == "TEAM_COLOR" || cmd == "HH_NUM") && n == 3) {
 			for (net::Team& t : fTeamList)
-				if (t.name == m[1])
+				if (t.name == m[1]) {
 					(cmd == "HH_NUM" ? t.hogs : t.color) = atoi(m[2].c_str());
+					// shortcut: the master sets one number for all teams; Qt sets each team's
+					if (cmd == "HH_NUM" && fChief && t.hogs != fHogs->Value())
+						SetHogs(t);
+				}
 			FillTeams();
 		} else if (cmd == "CFG" && n > 2) {
 			net::set_param(fCfg, m[1], std::vector<std::string>(m.begin() + 2, m.end()));
@@ -762,6 +787,7 @@ public:
 		fChief = chief;
 		for (BMenuField* f : {fScheme, fWeapons, fMap, fTheme})
 			f->SetEnabled(chief);
+		fHogs->SetEnabled(chief);
 		fStart->SetEnabled(chief);
 	}
 
@@ -783,14 +809,19 @@ public:
 		}
 		int scheme = std::max(fScheme->Menu()->IndexOf(fScheme->Menu()->FindMarked()), 0);
 		int weapons = std::max(fWeapons->Menu()->IndexOf(fWeapons->Menu()->FindMarked()), 0);
-		for (const auto& m : net::master_config(scheme, weapons, mapName, gen, theme, fSeed,
-			gen == 0 ? 1 << (rand() % 3) : 0)) {
+		for (const auto& m : net::master_config(scheme, weapons, mapName, gen, theme, fSeed, 0)) {
 			std::vector<std::string> msg = {"CFG"};
 			msg.insert(msg.end(), m.begin(), m.end());
 			Send(msg);
 			net::set_param(fCfg, m[0], std::vector<std::string>(m.begin() + 1, m.end()));
 		}
 		ShowConfig();
+	}
+
+	void SetHogs(net::Team& t)
+	{
+		t.hogs = fHogs->Value();
+		Send({"HH_NUM", t.name, std::to_string(t.hogs)});
 	}
 
 	void ShowConfig()
@@ -804,7 +835,7 @@ public:
 		if (!net::param(fCfg, "MAP").empty())
 			show_value(fMap, MapLabel(net::param(fCfg, "MAP")));
 		if (!net::param(fCfg, "THEME").empty())
-			show_value(fTheme, net::param(fCfg, "THEME"));
+			show_value(fTheme, RoomTheme());
 	}
 
 	void FillRoomPlayers()
@@ -843,10 +874,9 @@ public:
 		ToEngine(buf);
 	}
 
-	void StartGame()
+	// a fixed map's own theme, or the room's
+	std::string RoomTheme()
 	{
-		if (fGameRunning)
-			return;
 		std::string map = net::param(fCfg, "MAP");
 		std::string theme = net::param(fCfg, "THEME");
 		if (!map.empty() && map[0] != '+') {
@@ -854,8 +884,15 @@ public:
 			if (!cfg.empty())
 				theme = cfg[0];
 		}
-		if (!BEntry(BPath(gDataDir.Path(), ("Themes/" + theme).c_str()).Path()).Exists())
-			theme = "Nature";	// the server's default, or one we don't have
+		// the server's own default is a hedgehog emoji, until the host sends a theme
+		return theme.empty() || theme == "\xf0\x9f\xa6\x94" ? "Nature" : theme;
+	}
+
+	void StartGame()
+	{
+		if (fGameRunning)
+			return;
+		std::string theme = RoomTheme();
 		int p[2];
 		if (pipe(p) != 0)
 			return;
@@ -998,6 +1035,11 @@ public:
 				}
 				break;
 			case kMsgReady: Send({"TOGGLE_READY"}); break;
+			case kMsgHogs:
+				for (net::Team& t : fTeamList)
+					SetHogs(t);
+				FillTeams();
+				break;
 			case kMsgStart: Send({"START_GAME"}); break;
 			case kMsgSetting: {
 				BMenuItem* item;
@@ -1008,8 +1050,14 @@ public:
 			}
 			case kMsgPrompt: {
 				std::string kind = msg->GetString("kind", ""), text = msg->GetString("text", "");
-				if (kind == "nick" && !text.empty()) {
+				if (msg->GetBool("cancel")) {
+					if (kind != "room password") {	// no way into the lobby without a nickname
+						Send({"QUIT", "Cancelled"});
+						Disconnect();
+					}
+				} else if (kind == "nick" && !text.empty()) {
 					fMyNick = text;
+					fNick->SetText(text.c_str());
 					Send({"NICK", text});
 				} else if (kind == "room password")
 					JoinSelected(text);
@@ -1061,6 +1109,7 @@ private:
 	BTextView *fLobbyChat, *fRoomChat;
 	BMenuField *fScheme, *fWeapons, *fMap, *fTheme;
 	BCheckBox* fReady;
+	BSpinner* fHogs;
 };
 
 BMessenger NetWindow::sNetWindow;

@@ -181,7 +181,12 @@ public:
 					Fill();
 				} else {
 					fStatus->SetText(("Installed " + std::string(BPath(f->path.c_str()).Leaf())).c_str());
-					Fill();
+					// mark it in place, keeping the list's scrolling and selection
+					for (int32 i = 0; BRow* row = fList->RowAt(i); i++)
+						if (package_file(fPackages[((PackageRow*)row)->index]) == BPath(f->path.c_str()).Leaf()) {
+							row->SetField(new BStringField("Yes"), 6);
+							fList->UpdateRow(row);
+						}
 				}
 				fDownload->SetEnabled(Selected() != NULL);
 				delete f;

@@ -41,6 +41,8 @@ provides		{
 requires		{
 	haiku
 	lib:libGL
+	lib:libcrypto
+	lib:libcurl
 	lib:libstdc++
 }
 EOF
