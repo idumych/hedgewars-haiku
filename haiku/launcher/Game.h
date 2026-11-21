@@ -41,6 +41,8 @@ struct Outcome {
 	std::string error;		// "" when the game ran
 	std::string engineError;	// the engine's last fatal message
 	std::string saved;		// the demo or saved game written, if any
+	bool finished = false;		// played to the end (not quit)
+	std::vector<std::string> stats;	// the engine's "i" messages, without the 'i'
 };
 
 Outcome run_game(const Game& g);

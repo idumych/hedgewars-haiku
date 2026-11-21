@@ -23,6 +23,8 @@ frontend's local pages, in tabs:
 - **Missions**: training, challenges and scenarios, with their pictures and
   descriptions; won missions are marked
 - **Campaigns**: the missions your progress has unlocked
+- **Statistics** after a finished game or demo: winner, ranking, awards,
+  health graph
 - **Recordings**: interrupted games are kept as saved games and finished
   ones as demos, the way the Qt frontend records them; play them again or
   move them to the Trash
@@ -43,7 +45,7 @@ On Haiku R1/beta6 (x86_64), from the top of the tree (the package also runs on R
 `python3 haiku/tools/gen-schemes.py > haiku/launcher/schemes.h`.
 
 `make -f haiku/Makefile test` runs the tests: the surface (blit and clipping)
-code on any system, and on Haiku also the launcher's progress file.
+and statistics code on any system, and on Haiku also the launcher's progress file.
 
 `HWHAIKU_DEBUG=1` makes the engine print every input event it receives.
 
@@ -57,12 +59,13 @@ code on any system, and on Haiku also the launcher's progress file.
 | Sound effects, voices, music | works (checked from the VM's captured audio) |
 | Local game: you against the computer, or two players on one computer | works, from the launcher; checked with Default and Pro Mode, random and fixed (Bath) maps |
 | Training missions | works (Basic Movement: the hedgehog walks, the mission advances) |
-| Saved games and demos | works: quitting a game keeps it, and playing it resumes where it stopped |
+| Saved games and demos | works: quitting a game keeps it and playing it resumes where it stopped; a finished game is kept as a demo and plays back to its end |
+| Statistics after a game | works (winner, ranking, awards, health graph; pictures from the Qt frontend) |
 | Campaigns, challenges, scenarios, styles | listed and set up like the Qt frontend; not each one played through |
 | `.hpkg` | installs and plays: app in `apps/Hedgewars`, data in `data/hedgewars`, Deskbar entry |
 | Renku OS (x86_64, build00073, installed to disk in QEMU) | the same `.hpkg`, installed in the home folder: launcher, a match, sound |
 | Joysticks | written, not tested (no joystick in the VM) |
-| Scheme and weapon set editors, statistics after a game, video recording, network play | not in the launcher (the predefined schemes and weapon sets are) |
+| Scheme and weapon set editors, video recording, network play | not in the launcher (the predefined schemes and weapon sets are) |
 | App icon | HVIF, from `tools/make-icon.py` |
 | arm64 | not built |
 

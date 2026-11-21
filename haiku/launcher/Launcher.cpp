@@ -35,6 +35,7 @@
 #include <time.h>
 
 #include "Game.h"
+#include "Stats.h"
 #include "schemes.h"	// generated from frontend-qt6/model/gameSchemeModel.cpp
 #include "weapons.h"	// frontend-qt6
 
@@ -548,6 +549,9 @@ public:
 
 	void FillRecordings()
 	{
+		// a refresh keeps the selection: it runs each time the window is activated
+		int sel = fRecordingList->CurrentSelection();
+		std::string selected = sel >= 0 && sel < (int)fRecordings.size() ? fRecordings[sel] : "";
 		fRecordings.clear();
 		clear_list(fRecordingList);
 		for (const char* kind : {"Saves", "Demos"}) {
@@ -567,7 +571,8 @@ public:
 				fRecordingList->AddItem(new BStringItem(label.c_str()));
 			}
 		}
-		fRecordingList->Select(0);
+		auto at = std::find(fRecordings.begin(), fRecordings.end(), selected);
+		fRecordingList->Select(at != fRecordings.end() ? at - fRecordings.begin() : 0);
 		bool any = !fRecordings.empty();
 		fPlay->SetEnabled(any);
 		fTrash->SetEnabled(any);
@@ -886,6 +891,12 @@ public:
 				FillMissions();
 				FillCampaign();
 				FillRecordings();
+				std::vector<std::string> stats;
+				const char* stat;
+				for (int32 i = 0; msg->FindString("stat", i, &stat) == B_OK; i++)
+					stats.push_back(stat);
+				if (msg->GetBool("finished"))
+					show_stats(stats, Frame());
 				std::string text = error;
 				if (text.empty() && engineError[0])
 					text = std::string("The game engine stopped with an error:\n\n") + engineError;
@@ -908,6 +919,9 @@ public:
 		done.AddString("error", o.error.c_str());
 		done.AddString("engine error", o.engineError.c_str());
 		done.AddString("saved", o.saved.c_str());
+		done.AddBool("finished", o.finished);
+		for (const std::string& s : o.stats)
+			done.AddString("stat", s.c_str());
 		sWindow.SendMessage(&done);
 		return 0;
 	}

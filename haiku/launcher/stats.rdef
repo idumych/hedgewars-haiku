@@ -1,0 +1,13 @@
+// The Qt frontend's statistics pictures, for Stats.cpp (BTranslationUtils::GetBitmap('PNG ', name))
+resource(2, "StatsMedal1") #'PNG ' import "frontend-qt6/res/StatsMedal1.png";
+resource(3, "StatsMedal2") #'PNG ' import "frontend-qt6/res/StatsMedal2.png";
+resource(4, "StatsMedal3") #'PNG ' import "frontend-qt6/res/StatsMedal3.png";
+resource(5, "StatsMedal4") #'PNG ' import "frontend-qt6/res/StatsMedal4.png";
+resource(6, "StatsBestShot") #'PNG ' import "frontend-qt6/res/StatsBestShot.png";
+resource(7, "StatsBestKiller") #'PNG ' import "frontend-qt6/res/StatsBestKiller.png";
+resource(8, "StatsHedgehogsKilled") #'PNG ' import "frontend-qt6/res/StatsHedgehogsKilled.png";
+resource(9, "StatsMostSelfDamage") #'PNG ' import "frontend-qt6/res/StatsMostSelfDamage.png";
+resource(10, "StatsSelfKilled") #'PNG ' import "frontend-qt6/res/StatsSelfKilled.png";
+resource(11, "StatsSkipped") #'PNG ' import "frontend-qt6/res/StatsSkipped.png";
+resource(12, "StatsCustomAchievement") #'PNG ' import "frontend-qt6/res/StatsCustomAchievement.png";
+resource(13, "StatsEverAfter") #'PNG ' import "frontend-qt6/res/StatsEverAfter.png";

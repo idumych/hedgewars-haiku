@@ -314,8 +314,9 @@ Outcome run_game(const Game& g)
 		while (!in.empty() && in.size() >= (size_t)(uint8)in[0] + 1) {
 			std::string raw = in.substr(0, (uint8)in[0] + 1);
 			in.erase(0, raw.size());
-			// the engine appends two bytes of game ticks to each message
-			std::string msg = raw.substr(1, raw.size() > 3 ? raw.size() - 3 : 0);
+			// SendIPC appends two bytes of game ticks; stats ('i') are sent raw, without them
+			std::string msg = raw.size() > 1 && raw[1] == 'i' ? raw.substr(1)
+				: raw.substr(1, raw.size() > 3 ? raw.size() - 3 : 0);
 			std::string reply;
 			switch (msg.empty() ? 0 : msg[0]) {
 				case '?': add(reply, "!"); break;
@@ -323,7 +324,8 @@ Outcome run_game(const Game& g)
 				case 'E': out.engineError = msg.substr(1); break;
 				case 'q': case 'Q': case 'H': state = msg[0]; break;
 				case 'm': keepRecord = false; break;
-				case 'i': case 's': case 'b': case 'W': case '~': break;
+				case 'i': out.stats.push_back(msg.substr(1)); break;
+				case 's': case 'b': case 'W': case '~': break;
 				case 'V': case 'v': {
 					// campaign and mission variables: "?name" asks, "!name value" stores
 					std::string body = msg.size() > 1 ? msg.substr(2) : "";
@@ -343,7 +345,8 @@ Outcome run_game(const Game& g)
 	close(client);
 	int status;
 	waitpid(pid, &status, 0);
+	out.finished = state == 'q';
 	if (keepRecord && state)
-		out.saved = save_recording(record, state == 'q');
+		out.saved = save_recording(record, out.finished);
 	return out;
 }
