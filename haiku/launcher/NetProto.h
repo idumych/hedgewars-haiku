@@ -39,15 +39,26 @@ void set_param(Config& c, const std::string& name, const std::vector<std::string
 std::string param(const Config& c, const std::string& name, size_t i = 0);
 
 // the CFG messages a room master sends for these choices, in the Qt order (map last);
-// drawnMap: for a hand-drawn map (mapgen 3), the drawing as a .hwmap holds it
+// drawnMap: for a hand-drawn map (mapgen 3), the drawing as a .hwmap holds it;
+// script: the game style ("Normal", or a Scripts/Multiplayer file's name with spaces for '_')
 std::vector<std::vector<std::string>> master_config(const GameScheme& s, const WeaponSet& w,
 	const std::string& map, int mapgen, const std::string& theme, const std::string& seed,
-	int templateFilter, const std::string& drawnMap = "");
+	int templateFilter, const std::string& drawnMap = "", const std::string& script = "Normal");
 
 // everything the engine is sent when it asks for the config. theme: the one to
 // use (a fixed map's own); the scheme's and weapons' values come from the room,
 // or the predefined ones of that name
 std::string engine_config(const Config& c, const std::vector<Team>& teams, const std::string& theme);
+
+// a room's flags ("-gpjr") as words: "playing, password, joins restricted, registered only"
+std::string room_flags_text(const std::string& flags);
+
+// SERVER_VARS' name/value pairs (after the command)
+std::map<std::string, std::string> server_vars(const std::vector<std::string>& f);
+
+// BANLIST's entries (after the command): kind ("I" IP, "N" nickname), who, reason, time left
+struct Ban { std::string kind, who, reason, left; };
+std::vector<Ban> bans(const std::vector<std::string>& f);
 
 // a chat line as the engine shows it (proto.cpp formatChatMsg)
 std::string chat_line(const std::string& nick, const std::string& text);

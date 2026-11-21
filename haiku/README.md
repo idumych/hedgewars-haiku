@@ -62,8 +62,14 @@ and, from the Hedgewars menu, two windows:
 - **Network game**: connect to a Hedgewars server (nickname, and the password
   of a registered nickname or a locked room when asked), the lobby's rooms,
   players and chat, then a room: add or remove your team, chat, ready, and
-  for the room's host the scheme, weapons, map, theme and hedgehogs per team
-  and Start game. The engine plays the room's game and relays its moves
+  for the room's host the game style, scheme, weapons, map, theme, each
+  team's hedgehogs and colour, and Start game. Rooms can have a password;
+  the **Room** menu renames the room, restricts joins, team additions or
+  unregistered players, kicks a player or makes them host (also on a right
+  click in the player list). For server admins, the **Server** menu kicks
+  or bans a lobby player and opens **Administration…**: the server's
+  messages for new and old versions, the latest protocol number, the
+  accounts cache and the ban list (add by address or nickname, remove). The engine plays the room's game and relays its moves
   through the server; the statistics follow, as after a local game.
   Implemented of the protocol (`launcher/NetProto.cpp`, `Net.cpp`):
   NICK, PROTO, CONNECTED, PING/PONG, ERROR, WARNING, BYE, NOTICE (nickname
@@ -71,19 +77,17 @@ and, from the Hedgewars menu, two windows:
   ROOMS, ROOM ADD/UPD/DEL, SERVER_MESSAGE, CHAT, INFO, CLIENT_FLAGS (ready,
   host, playing), CREATE_ROOM, JOIN_ROOM, JOINING, JOINED, LEFT, PART,
   KICKED, ROOMABANDONED, ADD_TEAM, TEAM_ACCEPTED, REMOVE_TEAM, TEAM_COLOR,
-  HH_NUM, CFG (all of FULLMAPCONFIG, MAP, MAPGEN, MAZE_SIZE, SEED, TEMPLATE,
+  HH_NUM, ROOM_NAME, TOGGLE_RESTRICT_JOINS, TOGGLE_RESTRICT_TEAMS,
+  TOGGLE_REGISTERED_ONLY, KICK, DELEGATE, BAN, BANIP, BANNICK, BANLIST, UNBAN,
+  GET_SERVER_VAR/SERVER_VARS, SET_SERVER_VAR, CLEAR_ACCOUNTS_CACHE, CFG (all of FULLMAPCONFIG, MAP, MAPGEN, MAZE_SIZE, SEED, TEMPLATE,
   FEATURE_SIZE, THEME, SCRIPT, SCHEME, AMMO), TOGGLE_READY, START_GAME,
   RUN_GAME, EM, ROUND_FINISHED, ROUNDFINISHED, QUIT, FOLLOW (right-click a
   player in the lobby), joining a room whose game is running (the engine
   plays the game so far and watches), TEAMCHAT (`/team` in the game), and
   hand-drawn maps (DRAWNMAP; the host picks Hand-drawn and Edit drawing…).
   The host's scheme and weapon menus also list your own schemes and weapon
-  sets. Not implemented: the
-  admin page and its commands (BAN, KICK, DELEGATE, SET_SERVER_VAR…), room
-  flags and renaming, the official server's recorded games (REPLAY_START),
-  REDIRECT, TLS, game styles chosen
-  by the host (other hosts' styles are played), a room password when creating
-  a room, and per-team hedgehog numbers and colours.
+  sets. Not implemented: INFO requests, the official server's recorded games
+  (REPLAY_START), REDIRECT, TLS, the MOTD preview and filters of the room list.
 - **Downloadable content**: the add-ons listed on hedgewars.org (with
   libcurl), downloaded into `~/config/settings/Hedgewars/Data`, where the
   engine mounts them.
@@ -141,6 +145,7 @@ and on Haiku also the launcher's progress file.
 | Video recording | works: a clip recorded with R in a match became an mp4 that MediaPlayer plays with sound; WebM at 24 frames/s checked the same way; size and bit rate are fixed |
 | Network play | works: a net game between Haiku R1/beta6 and Renku (two QEMU machines) through the repo's `hedgewars-server` on the host: lobby, room, teams, hedgehog count, chat in the lobby, the room and the game, the game in sync to its end (the same statistics on both) and a demo kept on each; the room password and taken-nickname prompts checked; the registered-nickname password exchange is written, not tested (the local server has no accounts) |
 | Net play: watching, follow, drawn maps, team chat | works, checked through the local server: FOLLOW from the lobby's player menu (on both machines); joining a room whose game runs started the engine as a spectator on that game (a Python client's hand-drawn map, Desert theme, on R1/beta6); a net game on the host's hand-drawn map showed the same land on R1/beta6 and Renku; the host's own scheme (Quick turns, 20 s turns) and weapon set reached Renku and its engine; `/team` in the game reached the clan mate (a Python client) and its TEAMCHAT showed as `[Clan]` in the game. Not checked: resending a drawing edited while the room is open, watching a game with many turns already played (the moves are piped to the engine before it starts; a very long game blocks the window until the engine reads them) |
+| Network room and admin commands | works, on Renku against the local server with a Python client as the second player: creating a password room (joining without it is refused), renaming, the three restriction toggles (the server refused a join, a team and an unregistered player), game style, a team's hedgehogs and colour, kick from the room, make host; as admin (the server makes loopback clients admins, and QEMU's network connects from loopback): server messages and protocol number read and set, a nickname and an address ban added and removed, a player banned and kicked from the server. Clear accounts cache is sent but not checked (the local server has no accounts) |
 | Downloadable content | works: the list loads from hedgewars.org and a package (Ready Timer) lands in the Data folder, on Renku; the launcher's own menus don't list what add-ons bring (the engine uses them) |
 | Scheme and weapon set editors | works: a new scheme (turn time 20 s) and a copied weapon set (2 bazookas) were made in the editors, saved as `.hwg`/`.hwa`, and the engine got them (turn timer counted from 20; `HEDGEWARS_LOG_CONFIG=1` prints the config sent); copy and delete checked |
 | Map size, maze style, feature size, seed | works for a maze ("Large islands" and a typed seed reached the engine: it logged `large_islands`); WFC is offered but not played |
