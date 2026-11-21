@@ -142,7 +142,8 @@ std::string param(const Config& c, const std::string& name, size_t i)
 }
 
 std::vector<std::vector<std::string>> master_config(int scheme, int weapons, const std::string& map,
-	int mapgen, const std::string& theme, const std::string& seed, int templateFilter)
+	int mapgen, const std::string& theme, const std::string& seed, int templateFilter,
+	const std::string& script)
 {
 	const Scheme& s = kSchemes[scheme];
 	std::vector<std::string> sv = {"SCHEME", s.name};
@@ -155,7 +156,7 @@ std::vector<std::vector<std::string>> master_config(int scheme, int weapons, con
 		{"TEMPLATE", std::to_string(templateFilter)},
 		{"THEME", theme},
 		sv,
-		{"SCRIPT", "Normal"},	// shortcut: no game styles in net games yet
+		{"SCRIPT", script},
 		{"MAPGEN", std::to_string(mapgen)},
 		{"MAZE_SIZE", "0"},
 		{"FEATURE_SIZE", "12"},
@@ -271,6 +272,34 @@ std::vector<std::string> weapon_names()
 	std::vector<std::string> out;
 	for (const auto& w : kWeapons)
 		out.push_back(w.name);
+	return out;
+}
+
+std::string room_flags_text(const std::string& flags)
+{
+	static const struct { char c; const char* word; } kWords[] = {
+		{'g', "playing"}, {'p', "password"}, {'j', "joins restricted"}, {'r', "registered only"},
+	};
+	std::string out;
+	for (const auto& w : kWords)
+		if (flags.find(w.c) != std::string::npos)
+			out += (out.empty() ? "" : ", ") + std::string(w.word);
+	return out;
+}
+
+std::map<std::string, std::string> server_vars(const std::vector<std::string>& f)
+{
+	std::map<std::string, std::string> out;
+	for (size_t i = 0; i + 1 < f.size(); i += 2)
+		out[f[i]] = f[i + 1];
+	return out;
+}
+
+std::vector<Ban> bans(const std::vector<std::string>& f)
+{
+	std::vector<Ban> out;
+	for (size_t i = 0; i + 3 < f.size(); i += 4)
+		out.push_back({f[i], f[i + 1], f[i + 2], f[i + 3]});
 	return out;
 }
 

@@ -18,6 +18,7 @@
 #include <LayoutBuilder.h>
 #include <ListView.h>
 #include <Locker.h>
+#include <MenuBar.h>
 #include <MenuField.h>
 #include <MenuItem.h>
 #include <PopUpMenu.h>
@@ -40,6 +41,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "NetDialogs.h"
 #include "NetProto.h"
 #include "Stats.h"
 
@@ -51,7 +53,32 @@ enum {
 	kMsgLobbyChat = 'nlch', kMsgRoomChat = 'nrch', kMsgCreate = 'ncre', kMsgJoin = 'njoi',
 	kMsgLeave = 'nlea', kMsgTeam = 'ntea', kMsgReady = 'nrdy', kMsgStart = 'nsta',
 	kMsgSetting = 'nset', kMsgPrompt = 'nprm', kMsgNetGameOver = 'ngov', kMsgRoomSel = 'nrsl',
-	kMsgHogs = 'nhog',
+	kMsgHogs = 'nhog', kMsgTeamSel = 'ntsl', kMsgTeamColor = 'ntcl', kMsgStyle = 'nsty',
+	kMsgPlayerMenu = 'npmn', kMsgKick = 'nkck', kMsgBan = 'nban', kMsgDelegate = 'ndlg',
+	kMsgRename = 'nren', kMsgToggle = 'ntgl', kMsgAdmin = 'nadm',
+};
+
+static const char* const kColorNames[] = {"Red", "Blue", "Teal", "Purple", "Pink", "Green",
+	"Orange", "Brown", "Yellow"};	// HW_TEAMCOLOR_ARRAY
+
+// a player list whose right-click asks the window for the player's menu (chatwidget.cpp)
+class PlayerList : public BListView {
+public:
+	PlayerList(const char* name) : BListView(name) {}
+
+	void MouseDown(BPoint where) override
+	{
+		int32 buttons = Window()->CurrentMessage()->GetInt32("buttons", B_PRIMARY_MOUSE_BUTTON);
+		BListView::MouseDown(where);
+		int32 i = IndexOf(where);
+		if (!(buttons & B_SECONDARY_MOUSE_BUTTON) || i < 0)
+			return;
+		Select(i);
+		BMessage m(kMsgPlayerMenu);
+		m.AddPointer("list", this);
+		m.AddPoint("where", ConvertToScreen(where));
+		Window()->PostMessage(&m);
+	}
 };
 
 // the generated maps: label, MAP, MAPGEN (mapContainer.cpp, MapModel.cpp)
@@ -190,6 +217,7 @@ public:
 	{
 		signal(SIGPIPE, SIG_IGN);	// a closed connection or engine is an error, not the end
 		BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
+			.Add(MenuBar())
 			.AddCards()
 				.GetLayout(&fCards)
 				.Add(ConnectPage())
@@ -201,6 +229,97 @@ public:
 	}
 
 	~NetWindow() { Disconnect(); }
+
+	// ── the menus: the room host's and the server admin's commands ──
+	BMenuBar* MenuBar()
+	{
+		BMenuBar* bar = new BMenuBar("menu");
+		fRoomMenu = new BMenu("Room");
+		fRoomMenu->AddItem(new BMenuItem("Rename…", new BMessage(kMsgRename)));
+		fRoomMenu->AddSeparatorItem();
+		const char* toggles[][2] = {{"Restrict joins", "TOGGLE_RESTRICT_JOINS"},
+			{"Restrict team additions", "TOGGLE_RESTRICT_TEAMS"},
+			{"Registered players only", "TOGGLE_REGISTERED_ONLY"}};
+		for (const auto& t : toggles) {
+			BMessage* m = new BMessage(kMsgToggle);
+			m->AddString("cmd", t[1]);
+			fRoomMenu->AddItem(new BMenuItem(t[0], m));
+		}
+		fRoomMenu->AddSeparatorItem();
+		fRoomMenu->AddItem(new BMenuItem("Kick player", new BMessage(kMsgKick)));
+		fRoomMenu->AddItem(new BMenuItem("Make player host", new BMessage(kMsgDelegate)));
+		fServerMenu = new BMenu("Server");
+		fServerMenu->AddItem(new BMenuItem("Administration…", new BMessage(kMsgAdmin)));
+		fServerMenu->AddSeparatorItem();
+		fServerMenu->AddItem(new BMenuItem("Kick player", new BMessage(kMsgKick)));
+		fServerMenu->AddItem(new BMenuItem("Ban player…", new BMessage(kMsgBan)));
+		bar->AddItem(fRoomMenu);
+		bar->AddItem(fServerMenu);
+		return bar;
+	}
+
+	// the player picked in the list of the page shown (or in list)
+	std::string SelectedNick(BListView* list = NULL)
+	{
+		if (!list)
+			list = fState == kInRoom ? fRoomPlayers : fLobbyPlayers;
+		int32 i = list->CurrentSelection();
+		std::vector<std::string> nicks = list == fRoomPlayers ? fRoomNicks : SortedLobby();
+		return i >= 0 && i < (int32)nicks.size() ? nicks[i] : "";
+	}
+
+	// marks and enables what the player may do now (the server checks again)
+	void MenusBeginning() override
+	{
+		bool inRoom = fState == kInRoom;
+		std::string flags = RoomFlags(), nick = SelectedNick();
+		bool other = !nick.empty() && nick != fMyNick;
+		// the menus themselves stay enabled: a disabled one doesn't open, so this wouldn't run again
+		fRoomMenu->FindItem(kMsgRename)->SetEnabled(fChief);
+		for (int32 i = 0; BMenuItem* item = fRoomMenu->ItemAt(i); i++) {
+			if (item->Message() && item->Message()->what == kMsgToggle) {
+				std::string cmd = item->Message()->GetString("cmd", "");
+				item->SetEnabled(fChief);
+				item->SetMarked(cmd == "TOGGLE_RESTRICT_TEAMS" ? fRestrictTeams
+					: flags.find(cmd == "TOGGLE_RESTRICT_JOINS" ? 'j' : 'r') != std::string::npos);
+			}
+		}
+		fRoomMenu->FindItem(kMsgKick)->SetEnabled(fChief && other);
+		fRoomMenu->FindItem(kMsgDelegate)->SetEnabled(inRoom && (fChief || fAdmin) && other);
+		fServerMenu->FindItem(kMsgAdmin)->SetEnabled(fAdmin);
+		fServerMenu->FindItem(kMsgKick)->SetEnabled(fAdmin && !inRoom && other);
+		fServerMenu->FindItem(kMsgBan)->SetEnabled(fAdmin && !inRoom && other);
+	}
+
+	// right-click on a player: what the host or admin may do to them (HWChatWidget::showNicksMenu)
+	void PlayerMenu(BListView* list, BPoint where)
+	{
+		std::string nick = SelectedNick(list);
+		if (nick.empty() || nick == fMyNick)
+			return;
+		BPopUpMenu* menu = new BPopUpMenu("player", false, false);
+		auto add = [&](const char* label, uint32 what) {
+			BMessage* m = new BMessage(what);
+			m->AddString("nick", nick.c_str());
+			menu->AddItem(new BMenuItem(label, m));
+		};
+		if (list == fRoomPlayers) {
+			if (fChief)
+				add("Kick from room", kMsgKick);
+			if (fChief || fAdmin)
+				add("Make host", kMsgDelegate);
+		} else if (fAdmin) {
+			add("Kick from server", kMsgKick);
+			add("Ban…", kMsgBan);
+		}
+		if (menu->CountItems() == 0) {
+			delete menu;
+			return;
+		}
+		menu->SetTargetForItems(this);
+		menu->SetAsyncAutoDestruct(true);
+		menu->Go(where, true, false, true);
+	}
 
 	// ── pages ──
 	BView* ConnectPage()
@@ -234,20 +353,18 @@ public:
 		BGroupView* v = new BGroupView("lobby", B_VERTICAL);
 		fRooms = new BColumnListView("rooms", B_NAVIGABLE, B_FANCY_BORDER);
 		const char* cols[] = {"Room", "State", "Players", "Teams", "Host", "Map", "Scheme", "Weapons"};
-		float widths[] = {140, 70, 55, 50, 90, 90, 90, 90};
+		float widths[] = {140, 150, 55, 50, 90, 90, 90, 90};
 		for (int i = 0; i < 8; i++)
 			fRooms->AddColumn(new BStringColumn(cols[i], widths[i], 30, 400, B_TRUNCATE_END), i);
 		fRooms->SetSelectionMessage(new BMessage(kMsgRoomSel));
 		fRooms->SetInvocationMessage(new BMessage(kMsgJoin));
 		fRooms->SetExplicitMinSize(BSize(450, 150));
-		fLobbyPlayers = new BListView("players");
+		fLobbyPlayers = new PlayerList("players");
 		BScrollView* ps = new BScrollView("players scroll", fLobbyPlayers, 0, false, true);
 		ps->SetExplicitPreferredSize(BSize(130, B_SIZE_UNSET));
 		BScrollView* cs;
 		fLobbyChat = chat_view(&cs);
 		fLobbyEntry = new BTextControl(NULL, "", new BMessage(kMsgLobbyChat));
-		fRoomName = new BTextControl("New room:", "", NULL);
-		fRoomName->SetExplicitMinSize(BSize(be_plain_font->StringWidth("New room:  A long room name"), B_SIZE_UNSET));
 		fJoin = new BButton("Join room", new BMessage(kMsgJoin));
 		BLayoutBuilder::Group<>(v)
 			.SetInsets(B_USE_WINDOW_SPACING)
@@ -264,8 +381,7 @@ public:
 			.AddGroup(B_HORIZONTAL)
 				.Add(new BButton("Disconnect", new BMessage(kMsgDisconnect)))
 				.AddGlue()
-				.Add(fRoomName)
-				.Add(new BButton("Create room", new BMessage(kMsgCreate)))
+				.Add(new BButton("Create room…", new BMessage(kMsgCreate)))
 				.Add(fJoin)
 			.End();
 		return v;
@@ -274,9 +390,10 @@ public:
 	BView* RoomPage()
 	{
 		BGroupView* v = new BGroupView("room", B_VERTICAL);
-		fRoomPlayers = new BListView("room players");
+		fRoomPlayers = new PlayerList("room players");
 		BScrollView* ps = new BScrollView("room players scroll", fRoomPlayers, 0, false, true);
 		fTeams = new BListView("teams");
+		fTeams->SetSelectionMessage(new BMessage(kMsgTeamSel));
 		BScrollView* ts = new BScrollView("teams scroll", fTeams, 0, false, true);
 		ts->SetExplicitMinSize(BSize(240, 90));
 		fScheme = popup("Scheme:", net::scheme_names());
@@ -300,9 +417,22 @@ public:
 			if (ini_value(("Themes/" + t + "/theme.cfg").c_str(), "hidden ").find("true") == std::string::npos)
 				themes.push_back(t);
 		fTheme = popup("Theme:", themes);
-		fHogs = new BSpinner("hogs", "Hedgehogs per team:", new BMessage(kMsgHogs));
+		fStyles = list_dir("Scripts/Multiplayer", ".lua", false);
+		std::vector<std::string> styles = {"Normal"};
+		for (const std::string& st : fStyles)
+			styles.push_back(spaced(st));
+		fStyle = popup("Style:", styles);
+		for (int32 i = 0; BMenuItem* item = fStyle->Menu()->ItemAt(i); i++)
+			item->SetMessage(new BMessage(kMsgStyle));
+		fStyle->Menu()->AddItem(new BSeparatorItem(), 1);
+		// the selected team's hedgehogs and colour (frameTeam.cpp, hedgehogerWidget.cpp, colorwidget.cpp)
+		fHogs = new BSpinner("hogs", "Hedgehogs:", new BMessage(kMsgHogs));
 		fHogs->SetRange(1, 8);
 		fHogs->SetValue(4);
+		std::vector<std::string> colors(kColorNames, kColorNames + 9);
+		fTeamColor = popup("Color:", colors);
+		for (int32 i = 0; BMenuItem* item = fTeamColor->Menu()->ItemAt(i); i++)
+			item->SetMessage(new BMessage(kMsgTeamColor));
 		show_value(fTheme, "Nature");
 		BScrollView* cs;
 		fRoomChat = chat_view(&cs);
@@ -319,17 +449,20 @@ public:
 				.AddGroup(B_VERTICAL, B_USE_SMALL_SPACING, 1)
 					.Add(new BStringView("teams label", "Playing teams:"))
 					.Add(ts)
+					.AddGroup(B_HORIZONTAL)
+						.Add(fHogs)
+						.Add(fTeamColor)
+					.End()
 					.Add(new BStringView("players label", "Players:"))
 					.Add(ps)
 				.End()
 				.AddGroup(B_VERTICAL, B_USE_SMALL_SPACING, 1)
 					.AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
-						.AddMenuField(fScheme, 0, 0)
-						.AddMenuField(fWeapons, 0, 1)
-						.AddMenuField(fMap, 0, 2)
-						.AddMenuField(fTheme, 0, 3)
-						.Add(fHogs->CreateLabelLayoutItem(), 0, 4)
-						.Add(fHogs->CreateTextViewLayoutItem(), 1, 4)
+						.AddMenuField(fStyle, 0, 0)
+						.AddMenuField(fScheme, 0, 1)
+						.AddMenuField(fWeapons, 0, 2)
+						.AddMenuField(fMap, 0, 3)
+						.AddMenuField(fTheme, 0, 4)
 					.End()
 					.AddGlue()
 				.End()
@@ -370,6 +503,7 @@ public:
 			if (s.FindString("host", &str) == B_OK) fHost->SetText(str);
 			if (s.FindString("port", &str) == B_OK) fPort->SetText(str);
 			if (s.FindString("nick", &str) == B_OK) fNick->SetText(str);
+			if (s.FindString("room name", &str) == B_OK) fLastRoomName = str;
 			if (s.FindRect("frame", &frame) == B_OK) {
 				MoveTo(frame.LeftTop());
 				ResizeTo(frame.Width(), frame.Height());
@@ -386,6 +520,7 @@ public:
 		s.AddString("host", fHost->Text());
 		s.AddString("port", fPort->Text());
 		s.AddString("nick", fNick->Text());
+		s.AddString("room name", fLastRoomName.c_str());
 		s.AddRect("frame", Frame());
 		save_message(s, SettingsPath());
 	}
@@ -603,9 +738,16 @@ public:
 						SetChief(set);
 					if (m[i] == fMyNick && c == 'r' && fState == kInRoom)
 						fReady->SetValue(set);
+					if (m[i] == fMyNick && c == 'a')
+						fAdmin = set;
 				}
 			}
 			FillRoomPlayers();
+		} else if (cmd == "SERVER_VARS" || cmd == "BANLIST") {
+			BMessage r(kNetReply);
+			for (const std::string& p : m)
+				r.AddString("part", p.c_str());
+			fAdminWindow.SendMessage(&r);
 		} else if (cmd == "JOINING" && n > 1) {
 			fRoom = m[1];
 		} else if (cmd == "JOINED") {
@@ -655,14 +797,8 @@ public:
 			FillTeams();
 		} else if ((cmd == "TEAM_COLOR" || cmd == "HH_NUM") && n == 3) {
 			for (net::Team& t : fTeamList)
-				if (t.name == m[1]) {
+				if (t.name == m[1])
 					(cmd == "HH_NUM" ? t.hogs : t.color) = atoi(m[2].c_str());
-					// shortcut: the master sets one number for all teams; Qt sets each team's
-					if (cmd == "HH_NUM" && fChief && t.hogs != fHogs->Value())
-						SetHogs(t);
-					else if (cmd == "HH_NUM" && !fChief)
-						fHogs->SetValue(t.hogs);
-				}
 			FillTeams();
 		} else if (cmd == "CFG" && n > 2) {
 			net::set_param(fCfg, m[1], std::vector<std::string>(m.begin() + 2, m.end()));
@@ -677,10 +813,24 @@ public:
 	{
 		while (BListItem* item = fLobbyPlayers->RemoveItem((int32)0))
 			delete item;
+		for (const std::string& nick : SortedLobby())
+			fLobbyPlayers->AddItem(new BStringItem(nick.c_str()));
+	}
+
+	std::vector<std::string> SortedLobby()
+	{
 		std::vector<std::string> sorted = fLobby;
 		std::sort(sorted.begin(), sorted.end());
-		for (const std::string& nick : sorted)
-			fLobbyPlayers->AddItem(new BStringItem(nick.c_str()));
+		return sorted;
+	}
+
+	// the flags ("-gpjr") of the room we're in
+	std::string RoomFlags()
+	{
+		for (const auto& r : fRoomList)
+			if (r[1] == fRoom)
+				return r[0];
+		return "";
 	}
 
 	static std::string MapLabel(const std::string& map)
@@ -699,9 +849,10 @@ public:
 		fRooms->Clear();
 		for (const auto& r : fRoomList) {
 			// flags, name, players, teams, host, map, style, scheme, weapons, protocol
-			const std::string& flags = r[0];
-			std::string state = flags.find('g') != std::string::npos ? "Playing"
-				: flags.find('p') != std::string::npos ? "Password" : "Waiting";
+			std::string state = net::room_flags_text(r[0]);
+			if (r[0].find('g') == std::string::npos)
+				state = state.empty() ? "waiting" : "waiting, " + state;
+			state[0] = toupper(state[0]);
 			const std::string fields[8] = {r[1], state, r[2], r[3], r[4], MapLabel(r[5]), r[7], r[8]};
 			BRow* row = new BRow();
 			for (int i = 0; i < 8; i++)
@@ -711,6 +862,8 @@ public:
 				fRooms->AddToSelection(row);
 		}
 		fJoin->SetEnabled(fRooms->CurrentSelection() != NULL);
+		if (fState == kInRoom)
+			SetRoomName(fRoom);	// its flags may have changed
 	}
 
 	void JoinSelected(const std::string& password = "")
@@ -754,7 +907,8 @@ public:
 	void SetRoomName(const std::string& name)
 	{
 		fRoom = name;
-		fRoomTitle->SetText(("Room: " + name).c_str());
+		std::string flags = net::room_flags_text(RoomFlags());
+		fRoomTitle->SetText(("Room: " + name + (flags.empty() ? "" : " (" + flags + ")")).c_str());
 	}
 
 	void EnterRoom()
@@ -763,6 +917,7 @@ public:
 		fRoomNicks.clear();
 		fTeamList.clear();
 		fCfg.clear();
+		fRestrictTeams = false;
 		fRoomChat->SetText("");
 		SetRoomName(fRoom);
 		SetChief(fChief);
@@ -788,10 +943,10 @@ public:
 	void SetChief(bool chief)
 	{
 		fChief = chief;
-		for (BMenuField* f : {fScheme, fWeapons, fMap, fTheme})
+		for (BMenuField* f : {fStyle, fScheme, fWeapons, fMap, fTheme})
 			f->SetEnabled(chief);
-		fHogs->SetEnabled(chief);
 		fStart->SetEnabled(chief);
+		ShowTeam();
 	}
 
 	// the room master's choices to the others (GameCFGWidget::fullNetConfig)
@@ -812,7 +967,7 @@ public:
 		}
 		int scheme = std::max(fScheme->Menu()->IndexOf(fScheme->Menu()->FindMarked()), 0);
 		int weapons = std::max(fWeapons->Menu()->IndexOf(fWeapons->Menu()->FindMarked()), 0);
-		for (const auto& m : net::master_config(scheme, weapons, mapName, gen, theme, fSeed, 0)) {
+		for (const auto& m : net::master_config(scheme, weapons, mapName, gen, theme, fSeed, 0, marked(fStyle))) {
 			std::vector<std::string> msg = {"CFG"};
 			msg.insert(msg.end(), m.begin(), m.end());
 			Send(msg);
@@ -821,16 +976,32 @@ public:
 		ShowConfig();
 	}
 
-	void SetHogs(net::Team& t)
+	// the selected team, or NULL
+	net::Team* SelectedTeam()
 	{
-		t.hogs = fHogs->Value();
-		Send({"HH_NUM", t.name, std::to_string(t.hogs)});
+		int32 i = fTeams->CurrentSelection();
+		return i >= 0 && i < (int32)fTeamList.size() ? &fTeamList[i] : NULL;
+	}
+
+	// the selected team's hedgehogs and colour; the host changes them
+	void ShowTeam()
+	{
+		net::Team* t = SelectedTeam();
+		fHogs->SetEnabled(fChief && t);
+		fTeamColor->SetEnabled(fChief && t);
+		if (!t)
+			return;
+		fHogs->SetValue(t->hogs);
+		if (BMenuItem* item = fTeamColor->Menu()->ItemAt(t->color >= 0 && t->color < 9 ? t->color : 0))
+			item->SetMarked(true);
 	}
 
 	void ShowConfig()
 	{
 		if (fChief)
 			return;	// the menus are the master's own choices
+		if (!net::param(fCfg, "SCRIPT").empty())
+			show_value(fStyle, net::param(fCfg, "SCRIPT"));
 		if (!net::param(fCfg, "SCHEME").empty())
 			show_value(fScheme, net::param(fCfg, "SCHEME"));
 		if (!net::param(fCfg, "AMMO").empty())
@@ -857,15 +1028,19 @@ public:
 
 	void FillTeams()
 	{
-		static const char* const colors[] = {"red", "blue", "teal", "purple", "pink", "green",
-			"orange", "brown", "yellow"};
+		int32 selected = fTeams->CurrentSelection();
 		while (BListItem* item = fTeams->RemoveItem((int32)0))
 			delete item;
 		for (const net::Team& t : fTeamList) {
+			std::string color = kColorNames[t.color >= 0 && t.color < 9 ? t.color : 0];
+			color[0] = tolower(color[0]);
 			std::string label = t.name + " (" + (t.remote ? t.owner : std::string("you")) + "), "
-				+ std::to_string(t.hogs) + (t.hogs == 1 ? " hedgehog, " : " hedgehogs, ") + colors[t.color >= 0 && t.color < 9 ? t.color : 0];
+				+ std::to_string(t.hogs) + (t.hogs == 1 ? " hedgehog, " : " hedgehogs, ") + color;
 			fTeams->AddItem(new BStringItem(label.c_str()));
 		}
+		if (selected >= 0 && selected < fTeams->CountItems())
+			fTeams->Select(selected);	// posts kMsgTeamSel
+		ShowTeam();
 		fTeamButton->SetLabel(MyTeamPlays() ? "Remove my team" : "Add my team");
 	}
 
@@ -983,6 +1158,8 @@ public:
 				fLobby.clear();
 				fRoomList.clear();
 				fFlags.clear();
+				fAdmin = false;
+				fAdminWindow.SendMessage(B_QUIT_REQUESTED);
 				fConnect->SetEnabled(true);
 				fConnectStatus->SetText(why.c_str());
 				SetTitle("Network game");
@@ -1011,16 +1188,85 @@ public:
 			}
 			case kMsgRoomSel: fJoin->SetEnabled(fRooms->CurrentSelection() != NULL); break;
 			case kMsgJoin: JoinSelected(); break;
-			case kMsgCreate: {
-				std::string name = fRoomName->Text();
-				if (name.empty()) {
-					append(fLobbyChat, "*** Type a name for the new room first.");
-					fRoomName->MakeFocus();
-					break;
-				}
-				fRoom = name;
+			case kMsgCreate: open_create_room_window(BMessenger(this), Frame(), fLastRoomName); break;
+			case kNetCreateRoom: {	// HWNewNet::CreateRoom
+				std::string name = msg->GetString("name", ""), password = msg->GetString("password", "");
+				fRoom = fLastRoomName = name;
 				fChief = true;
-				Send({"CREATE_ROOM", name});
+				if (password.empty())
+					Send({"CREATE_ROOM", name});
+				else
+					Send({"CREATE_ROOM", name, password});
+				break;
+			}
+			case kNetSend: {
+				std::vector<std::string> parts;
+				const char* p;
+				for (int32 i = 0; msg->FindString("part", i, &p) == B_OK; i++)
+					parts.push_back(p);
+				if (!parts.empty())
+					Send(parts);
+				break;
+			}
+			case kMsgPlayerMenu: {
+				BListView* list;
+				if (msg->FindPointer("list", (void**)&list) == B_OK)
+					PlayerMenu(list, msg->GetPoint("where", BPoint()));
+				break;
+			}
+			case kMsgKick:	// in a room: from the room (its host); in the lobby: from the server (an admin)
+			case kMsgDelegate:
+			case kMsgBan: {
+				std::string nick = msg->GetString("nick", SelectedNick().c_str());
+				if (nick.empty() || nick == fMyNick)
+					break;
+				if (msg->what == kMsgBan)
+					open_ban_window(BMessenger(this), Frame(), nick);
+				else
+					Send({msg->what == kMsgKick ? "KICK" : "DELEGATE", nick});
+				break;
+			}
+			case kMsgRename:
+				(new PromptWindow(this, "A new name for the room:", "rename", false, "Rename"))->Show();
+				break;
+			case kMsgToggle: {
+				std::string cmd = msg->GetString("cmd", "");
+				if (cmd == "TOGGLE_RESTRICT_TEAMS")
+					fRestrictTeams = !fRestrictTeams;	// the server doesn't tell
+				Send({cmd});
+				break;
+			}
+			case kMsgAdmin: {
+				BLooper* looper = NULL;
+				fAdminWindow.Target(&looper);
+				if (BWindow* w = dynamic_cast<BWindow*>(looper)) {
+					if (w->Lock()) {
+						w->Activate();
+						w->Unlock();
+					}
+				} else
+					fAdminWindow = open_admin_window(BMessenger(this), Frame());
+				break;
+			}
+			case kMsgTeamSel: ShowTeam(); break;
+			case kMsgTeamColor:	// HWNewNet::onTeamColorChanged
+				if (net::Team* t = SelectedTeam(); t && fChief) {
+					t->color = std::max(fTeamColor->Menu()->IndexOf(fTeamColor->Menu()->FindMarked()), 0);
+					Send({"TEAM_COLOR", t->name, std::to_string(t->color)});
+					FillTeams();
+				}
+				break;
+			case kMsgStyle: {
+				// a style's .cfg names its scheme and weapons ("*": any), as on the Match tab
+				int i = fStyle->Menu()->IndexOf(fStyle->Menu()->FindMarked());
+				if (i > 1 && i - 2 < (int)fStyles.size()) {	// after Normal and the separator
+					std::vector<std::string> cfg = read_lines(("Scripts/Multiplayer/" + fStyles[i - 2] + ".cfg").c_str());
+					if (cfg.size() > 0 && cfg[0] != "*" && fScheme->Menu()->FindItem(spaced(cfg[0]).c_str()))
+						show_value(fScheme, spaced(cfg[0]));
+					if (cfg.size() > 1 && cfg[1] != "*" && fWeapons->Menu()->FindItem(spaced(cfg[1]).c_str()))
+						show_value(fWeapons, spaced(cfg[1]));
+				}
+				SendConfig(false);
 				break;
 			}
 			case kMsgLeave:
@@ -1038,12 +1284,12 @@ public:
 				}
 				break;
 			case kMsgReady: Send({"TOGGLE_READY"}); break;
-			case kMsgHogs:
-				if (!fChief)
-					break;
-				for (net::Team& t : fTeamList)
-					SetHogs(t);
-				FillTeams();
+			case kMsgHogs:	// HWNewNet::onHedgehogsNumChanged
+				if (net::Team* t = SelectedTeam(); t && fChief && t->hogs != fHogs->Value()) {
+					t->hogs = fHogs->Value();
+					Send({"HH_NUM", t->name, std::to_string(t->hogs)});
+					FillTeams();
+				}
 				break;
 			case kMsgStart: Send({"START_GAME"}); break;
 			case kMsgSetting: {
@@ -1066,6 +1312,8 @@ public:
 					Send({"NICK", text});
 				} else if (kind == "room password")
 					JoinSelected(text);
+				else if (kind == "rename" && !text.empty())
+					Send({"ROOM_NAME", text});	// the server's ROOM UPD renames it here too
 				else if (kind == "password")
 					SendPassword(text);
 				break;
@@ -1098,21 +1346,23 @@ private:
 	BLocker fLock;	// fFd, shared with the reader and game threads
 	int fFd = -1, fEngineIn = -1;
 	thread_id fReader = -1;
-	bool fChief = false, fGameRunning = false;
-	std::string fMyNick, fRoom, fSeed, fByeReason, fServerSalt, fServerHash;
-	std::vector<std::string> fLobby, fRoomNicks, fMaps;
+	bool fChief = false, fGameRunning = false, fAdmin = false, fRestrictTeams = false;
+	std::string fMyNick, fRoom, fSeed, fByeReason, fServerSalt, fServerHash, fLastRoomName;
+	std::vector<std::string> fLobby, fRoomNicks, fMaps, fStyles;
 	std::vector<std::vector<std::string>> fRoomList;
 	std::map<std::string, std::string> fFlags;	// CLIENT_FLAGS letters by nickname
 	std::vector<net::Team> fTeamList;	// in the room, in the order the server gave them
 	net::Config fCfg;
 	BCardLayout* fCards;
-	BTextControl *fHost, *fPort, *fNick, *fLobbyEntry, *fRoomName, *fRoomEntry;
+	BTextControl *fHost, *fPort, *fNick, *fLobbyEntry, *fRoomEntry;
 	BStringView *fConnectStatus, *fRoomTitle;
 	BButton *fConnect, *fJoin, *fTeamButton, *fStart;
 	BColumnListView* fRooms;
 	BListView *fLobbyPlayers, *fRoomPlayers, *fTeams;
 	BTextView *fLobbyChat, *fRoomChat;
-	BMenuField *fScheme, *fWeapons, *fMap, *fTheme;
+	BMenuField *fStyle, *fScheme, *fWeapons, *fMap, *fTheme, *fTeamColor;
+	BMenu *fRoomMenu, *fServerMenu;
+	BMessenger fAdminWindow;
 	BCheckBox* fReady;
 	BSpinner* fHogs;
 };

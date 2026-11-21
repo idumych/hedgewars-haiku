@@ -89,6 +89,19 @@ int main()
 	assert(has(cfg, "emap Bath") && has(cfg, "e$turntime 45000") && has(cfg, "e$feature_size 12"));
 	assert(has(cfg, "escript Scripts/Multiplayer/Capture_the_Flag.lua") && has(cfg, "eammstore"));
 
+	// the host's game style
+	Config e;
+	for (const auto& m : master_config(0, 0, "+rnd+", 0, "Nature", "s", 0, "Capture the Flag"))
+		set_param(e, m[0], std::vector<std::string>(m.begin() + 1, m.end()));
+	assert(param(e, "SCRIPT") == "Capture the Flag");
+
+	// room flags, admin replies
+	assert(room_flags_text("-") == "" && room_flags_text("-pj") == "password, joins restricted");
+	auto vars = server_vars({"MOTD_NEW", "hi", "MOTD_OLD", "old", "LATEST_PROTO", "60"});
+	assert(vars["MOTD_NEW"] == "hi" && vars["LATEST_PROTO"] == "60");
+	auto b = bans({"I", "10.0.0.3", "spam", "50s", "N", "bob", "rude", "3600s", "x"});
+	assert(b.size() == 2 && b[1].kind == "N" && b[1].who == "bob" && b[0].left == "50s");
+
 	assert(chat_line("bob", "hi") == "\x01" "bob: hi");
 	assert(chat_line("bob", "/me waves") == "\x02* bob waves");
 	puts("net_test: all passed");
