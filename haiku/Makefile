@@ -26,8 +26,9 @@ VOS_LDFLAGS  := $(shell pkg-config --libs vos) -Wl,-rpath-link=$(shell pkg-confi
 HWHAIKU_LIBS := $(VOS_LDFLAGS) -ltranslation -lgame -lopengl -lmedia2 -lGL -lpthread
 LAUNCH_LIBS  := $(VOS_LDFLAGS) -ltranslation -ltracker -lcrypto -lcurl -lz -lpthread
 PHYSFS_BEOS  :=
-RPATH_LIB    := -Wl,-rpath,'$$ORIGIN'
-RPATH_APP    := -Wl,-rpath,'$$ORIGIN/lib'
+# rpath-link: links against libhwhaiku must find its VitruvianOS libraries too
+RPATH_LIB    := -Wl,-rpath,'$$ORIGIN' -Wl,-rpath-link=$(shell pkg-config --variable=libdir vos)
+RPATH_APP    := -Wl,-rpath,'$$ORIGIN/lib' -Wl,-rpath-link=$(shell pkg-config --variable=libdir vos)
 MIMESET      := true
 else
 HWHAIKU_LIBS := -lbe -lgame -lGL -lmedia -ltranslation -ldevice -lnetwork
@@ -120,7 +121,12 @@ $(APP)/Hedgewars: $(wildcard haiku/launcher/*.cpp haiku/launcher/*.h haiku/launc
 	@mkdir -p $(OBJ)
 	$(CXX) -O2 -g -std=c++17 -Wall -Ifrontend-qt6 $(VOS_CFLAGS) -DHW_DATADIR='"$(DATADIR)"' \
 		-o $@ haiku/launcher/*.cpp $(LAUNCH_LIBS)
+ifneq ($(VOS_INC),)
+	python3 haiku/tools/inline-rdef.py $(OBJ)/Hedgewars.rdef haiku/launcher/*.rdef	# V\OS rc can't read imports
+	rc -o $(OBJ)/Hedgewars.rsrc $(OBJ)/Hedgewars.rdef
+else
 	rc -I . -o $(OBJ)/Hedgewars.rsrc haiku/launcher/*.rdef	# -I: where import finds files
+endif
 	xres -o $@ $(OBJ)/Hedgewars.rsrc
 	$(MIMESET) $@
 
