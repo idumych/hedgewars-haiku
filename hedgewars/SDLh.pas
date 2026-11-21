@@ -64,13 +64,20 @@ const
     SDL_MixerLibName = 'SDL2_mixer.dll';
     SDL_ImageLibName = 'SDL2_image.dll';
     SDL_NetLibName = 'SDL2_net.dll';
+{$ELSE}{$IFDEF HAIKU}
+    // libhwhaiku implements these entry points natively on the Haiku API
+    SDLLibName = 'hwhaiku';
+    SDL_TTFLibName = 'hwhaiku';
+    SDL_MixerLibName = 'hwhaiku';
+    SDL_ImageLibName = 'hwhaiku';
+    SDL_NetLibName = 'hwhaiku';
 {$ELSE}
     SDLLibName = 'libSDL2';
     SDL_TTFLibName = 'libSDL2_ttf';
     SDL_MixerLibName = 'libSDL2_mixer';
     SDL_ImageLibName = 'libSDL2_image';
     SDL_NetLibName = 'libSDL2_net';
-{$ENDIF}
+{$ENDIF}{$ENDIF}
 
 /////////////////////////////////////////////////////////////////
 /////////////////////  CONSTANT DEFINITIONS /////////////////////
