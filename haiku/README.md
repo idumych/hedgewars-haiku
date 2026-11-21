@@ -28,8 +28,10 @@ A native launcher (`launcher/`) replaces the Qt
 frontend's local pages, in tabs:
 
 - **Match**: opponent (the computer at five levels, or a second player),
-  hedgehogs per team, the 16 predefined schemes, the weapon sets, game
-  styles, generated or fixed maps, theme
+  hedgehogs per team, scheme and weapon set (the predefined ones and your
+  own, each with an editor window), game styles, generated or fixed maps,
+  theme, and for generated maps the map size, maze style, feature size and
+  seed
 - **Missions**: training, challenges and scenarios, with their pictures and
   descriptions; won missions are marked
 - **Campaigns**: the missions your progress has unlocked
@@ -41,7 +43,8 @@ frontend's local pages, in tabs:
 - **Team**: name, flag, grave, fort, voice, hedgehog names and hats
 
 Settings, the team, recordings and mission progress live in
-`~/config/settings/Hedgewars`.
+`~/config/settings/Hedgewars`; your schemes and weapon sets in its
+`Schemes/Game/*.hwg` and `Schemes/Ammo/*.hwa`, the Qt frontend's files.
 
 ## Build
 
@@ -55,8 +58,8 @@ On Haiku R1/beta6 (x86_64), from the top of the tree (the package also runs on R
 `launcher/schemes.h` is generated from the Qt frontend's scheme list:
 `python3 haiku/tools/gen-schemes.py > haiku/launcher/schemes.h`.
 
-`make -f haiku/Makefile test` runs the tests: the surface (blit and clipping)
-and statistics code on any system, and on Haiku also the launcher's progress file.
+`make -f haiku/Makefile test` runs the tests: the surface (blit and clipping),
+statistics and scheme file code on any system, and on Haiku also the launcher's progress file.
 
 `HWHAIKU_DEBUG=1` makes the engine print every input event it receives.
 
@@ -76,7 +79,9 @@ and statistics code on any system, and on Haiku also the launcher's progress fil
 | `.hpkg` | installs and plays: app in `apps/Hedgewars`, data in `data/hedgewars`, Deskbar entry |
 | Renku OS (x86_64, build00073, installed to disk in QEMU) | the same `.hpkg`, installed in the home folder: launcher, a match, sound |
 | Joysticks | written, not tested (no joystick in the VM) |
-| Scheme and weapon set editors, video recording, network play | not in the launcher (the predefined schemes and weapon sets are) |
+| Scheme and weapon set editors | works: a new scheme (turn time 20 s) and a copied weapon set (2 bazookas) were made in the editors, saved as `.hwg`/`.hwa`, and the engine got them (turn timer counted from 20; `HEDGEWARS_LOG_CONFIG=1` prints the config sent); copy and delete checked |
+| Map size, maze style, feature size, seed | works for a maze ("Large islands" and a typed seed reached the engine: it logged `large_islands`); WFC is offered but not played |
+| Video recording, network play | not in the launcher |
 | App icon | HVIF, from `tools/make-icon.py` |
 | arm64 | not built |
 
