@@ -140,8 +140,8 @@ and on Haiku also the launcher's progress file.
 | Saved games and demos | works: quitting a game keeps it and playing it resumes where it stopped; a finished game is kept as a demo and plays back to its end |
 | Statistics after a game | works (winner, ranking, awards, health graph; pictures from the Qt frontend) |
 | Campaigns, challenges, scenarios, styles | listed and set up like the Qt frontend; not each one played through |
-| `.hpkg` | installs and plays: app in `apps/Hedgewars`, data in `data/hedgewars`, Deskbar entry |
-| Renku OS (x86_64, build00073, installed to disk in QEMU) | the same `.hpkg`, installed in the home folder: launcher, a match, sound |
+| `.hpkg` | installs and plays (system-wide on Haiku R1/beta6, started from the Deskbar): app in `apps/Hedgewars`, data in `data/hedgewars`, Deskbar entry, `bin/hedgewars`; a match, a recorded video, Settings and a network room checked from the installed copy |
+| Renku OS (x86_64, build00073, installed to disk in QEMU) | the same `.hpkg`, installed in the home folder; Renku's own packages cover its requirements (ffmpeg6, curl, openssl3, mesa): started from the Deskbar, a match, a recorded video (MP4) |
 | Joysticks | written, not tested (no joystick in the VM) |
 | Settings window | works: window size 800 × 600 and the frame rate showed in the game; German mission names in the launcher and `--locale de.txt` to the engine; quality, volume, damage display and tooltips are passed as the Qt frontend passes them, not each checked by eye |
 | Key bindings | works: Walk left set to A in Settings walks with A and not with Left; a team's own key (J) works on its turn while the other team keeps A |
