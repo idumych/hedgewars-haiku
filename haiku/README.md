@@ -48,8 +48,9 @@ frontend's local pages, in tabs:
   move them to the Trash
 - **Videos**: press R in a game to start and stop recording; after the game a
   second engine replays the recorded stretch off screen and encodes it to
-  `Videos/` (mp4: MPEG-4 video, AAC sound, 1280×720, 30 frames/s). The list
-  shows each video's picture and map; Play opens it in MediaPlayer
+  `Videos/` at 1280×720, as MP4 (MPEG-4, AAC), WebM (VP8, Vorbis) or Ogg
+  (Theora, Vorbis), at 24, 30 or 60 frames/s. The list shows each video's
+  picture and map; Play opens it in MediaPlayer
 - **Team**: name, flag, grave, fort, voice, hedgehog names and hats
 
 Settings, the team, recordings and mission progress live in
@@ -88,7 +89,7 @@ and statistics code on any system, and on Haiku also the launcher's progress fil
 | `.hpkg` | installs and plays: app in `apps/Hedgewars`, data in `data/hedgewars`, Deskbar entry |
 | Renku OS (x86_64, build00073, installed to disk in QEMU) | the same `.hpkg`, installed in the home folder: launcher, a match, sound |
 | Joysticks | written, not tested (no joystick in the VM) |
-| Video recording | works: a clip recorded with R in a match became an mp4 that MediaPlayer plays with sound; the format, size and frame rate are fixed |
+| Video recording | works: a clip recorded with R in a match became an mp4 that MediaPlayer plays with sound; WebM at 24 frames/s checked the same way; size and bit rate are fixed |
 | Scheme and weapon set editors, network play | not in the launcher (the predefined schemes and weapon sets are) |
 | App icon | HVIF, from `tools/make-icon.py` |
 | arm64 | not built: Renku OS arm64 (hrev60072_940) has no OpenGL (no Mesa in its ports repository, no OpenGL kit in the system), which the engine draws with; Rust has no aarch64 Haiku target either (it would need a custom target and a nightly toolchain). Free Pascal is no longer needed |

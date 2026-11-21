@@ -268,10 +268,9 @@ Outcome run_game(const Game& g)
 	if (!g.videoPrefix.empty()) {	// HWRecorder::getArguments
 		args = {engine, "--internal", "--port", port, "--prefix", gDataDir.Path(),
 			"--user-prefix", gUserDir.Path(), "--locale", "en.txt", "--width", "1280", "--height", "720",
-			"--nosound", "--nomusic", "--volume", "0", "--recorder", "30", "1", g.videoPrefix,
-			// shortcut: fixed 720p, 30 frames/s, mp4 with MPEG-4 and AAC (Haiku's ffmpeg has no
-			// H.264 encoder); a settings window when someone asks
-			"mp4", "mpeg4", std::to_string(4 * 1048576), g.sound ? "aac" : "no"};
+			"--nosound", "--nomusic", "--volume", "0", "--recorder", std::to_string(g.videoFps), "1", g.videoPrefix,
+			// shortcut: fixed 1280x720 and bit rate; settings for them when someone asks
+			g.videoFormat, g.videoCodec, std::to_string(4 * 1048576), g.sound ? g.audioCodec : "no"};
 	} else if (g.fullscreen)
 		args.push_back("--fullscreen");
 	if (!g.sound)

@@ -9,6 +9,7 @@
 
 class BButton;
 class BListView;
+class BMenuField;
 class BTextView;
 class VideoPicture;
 
@@ -28,6 +29,7 @@ private:
 	BTextView* fText;
 	VideoPicture* fPicture;
 	BButton *fPlay, *fTrash;
+	BMenuField *fFormat, *fFps;
 	std::vector<std::string> fFiles;	// paths of the videos listed
 	std::vector<std::string> fEncoding;	// labels of the videos being rendered
 };

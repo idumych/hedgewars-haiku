@@ -38,6 +38,8 @@ struct Game {
 	bool fullscreen = false, sound = true, music = true;
 	// set: render the replay off screen into VideoTemp/<videoPrefix>.<format> (HWRecorder)
 	std::string videoPrefix;
+	std::string videoFormat = "mp4", videoCodec = "mpeg4", audioCodec = "aac";	// ffmpeg names
+	int videoFps = 30;
 	std::function<void(float)> progress;	// 0..1, from the engine's thread
 };
 

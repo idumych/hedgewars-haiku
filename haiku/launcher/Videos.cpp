@@ -10,9 +10,13 @@
 #include <Button.h>
 #include <Directory.h>
 #include <Entry.h>
+#include <File.h>
 #include <FindDirectory.h>
 #include <LayoutBuilder.h>
 #include <ListView.h>
+#include <MenuField.h>
+#include <MenuItem.h>
+#include <PopUpMenu.h>
 #include <Node.h>
 #include <Roster.h>
 #include <ScrollView.h>
@@ -28,6 +32,28 @@ enum { kMsgVideoSel = 'vsel', kMsgVideoPlay = 'vply', kMsgVideoTrash = 'vtrs',
 	kMsgVideoProgress = 'vprg', kMsgVideoDone = 'vdon' };
 
 static BPath user_path(const std::string& rel) { return BPath(gUserDir.Path(), rel.c_str()); }
+
+// the pairs Haiku's ffmpeg encodes (no H.264 encoder; Opus refuses avwrapper's quality setting)
+static const struct { const char* label; const char* format; const char* video; const char* audio; } kFormats[] = {
+	{"MP4 (MPEG-4, AAC)", "mp4", "mpeg4", "aac"},
+	{"WebM (VP8, Vorbis)", "webm", "libvpx", "libvorbis"},
+	{"Ogg (Theora, Vorbis)", "ogg", "libtheora", "libvorbis"},
+};
+static const int kFps[] = {24, 30, 60};
+
+static BMenuField* choice(const char* label, const std::vector<std::string>& items, int marked)
+{
+	BPopUpMenu* menu = new BPopUpMenu("choice");
+	for (size_t i = 0; i < items.size(); i++)
+		menu->AddItem(new BMenuItem(items[i].c_str(), new BMessage('vset')));
+	if (BMenuItem* item = menu->ItemAt(marked))
+		item->SetMarked(true);
+	return new BMenuField(label, menu);
+}
+
+static int marked(BMenuField* f) { return f->Menu()->IndexOf(f->Menu()->FindMarked()); }
+
+static BPath settings_path() { return user_path("video_settings"); }
 
 // the thumbnail the engine saved at the start of the recording
 class VideoPicture : public BView {
@@ -82,6 +108,16 @@ VideosView::VideosView() : BGroupView("Videos", B_VERTICAL)
 	hint->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
 	fPlay = new BButton("Play", new BMessage(kMsgVideoPlay));
 	fTrash = new BButton("Move to Trash", new BMessage(kMsgVideoTrash));
+	BMessage settings;
+	BFile file(settings_path().Path(), B_READ_ONLY);
+	settings.Unflatten(&file);
+	std::vector<std::string> formats, rates;
+	for (const auto& f : kFormats)
+		formats.push_back(f.label);
+	for (int r : kFps)
+		rates.push_back(std::to_string(r) + " frames per second");
+	fFormat = choice("Format:", formats, std::clamp(settings.GetInt32("format", 0), 0, 2));
+	fFps = choice("Frame rate:", rates, std::clamp(settings.GetInt32("fps", 1), 0, 2));
 	BLayoutBuilder::Group<>(this)
 		.SetInsets(B_USE_DEFAULT_SPACING)
 		.Add(hint)
@@ -92,6 +128,11 @@ VideosView::VideosView() : BGroupView("Videos", B_VERTICAL)
 				.Add(fText)
 				.AddGlue()
 			.End()
+		.End()
+		.AddGroup(B_HORIZONTAL)
+			.Add(fFormat)
+			.Add(fFps)
+			.AddGlue()
 		.End()
 		.AddGroup(B_HORIZONTAL)
 			.Add(fTrash)
@@ -106,6 +147,8 @@ void VideosView::AttachedToWindow()
 	fList->SetTarget(this);
 	fPlay->SetTarget(this);
 	fTrash->SetTarget(this);
+	fFormat->Menu()->SetTargetForItems(this);
+	fFps->Menu()->SetTargetForItems(this);
 	Fill();
 }
 
@@ -158,6 +201,7 @@ void VideosView::ShowSelected()
 struct Rendering {
 	std::string prefix, record;
 	BMessenger to;
+	int format, fps;
 };
 
 static int32 render_thread(void* data)
@@ -171,6 +215,10 @@ static int32 render_thread(void* data)
 			g.replay.replace(at, 3, "\x02TV");
 	}
 	g.videoPrefix = r->prefix;
+	g.videoFormat = kFormats[r->format].format;
+	g.videoCodec = kFormats[r->format].video;
+	g.audioCodec = kFormats[r->format].audio;
+	g.videoFps = kFps[r->fps];
 	g.sound = BEntry(user_path("VideoTemp/" + r->prefix + ".sw").Path()).Exists();
 	BMessenger to = r->to;
 	std::string prefix = r->prefix;
@@ -224,7 +272,7 @@ int VideosView::StartEncoding(const std::string& record)
 	for (const std::string& p : prefixes) {
 		fEncoding.push_back(p + " (rendering…)");
 		resume_thread(spawn_thread(render_thread, "video", B_LOW_PRIORITY,
-			new Rendering{p, record, BMessenger(this)}));
+			new Rendering{p, record, BMessenger(this), marked(fFormat), marked(fFps)}));
 	}
 	if (!prefixes.empty())
 		Fill();
@@ -235,6 +283,13 @@ void VideosView::MessageReceived(BMessage* msg)
 {
 	switch (msg->what) {
 		case kMsgVideoSel: ShowSelected(); break;
+		case 'vset': {	// remembered for the next recording
+			BMessage settings;
+			settings.AddInt32("format", marked(fFormat));
+			settings.AddInt32("fps", marked(fFps));
+			save_message(settings, settings_path());
+			break;
+		}
 		case kMsgVideoPlay: {
 			int i = fList->CurrentSelection() - (int)fEncoding.size();
 			entry_ref ref;
