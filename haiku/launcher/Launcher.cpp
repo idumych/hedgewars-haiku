@@ -36,26 +36,17 @@
 
 #include "Content.h"
 #include "DrawMap.h"
+#include "Editors.h"
 #include "Game.h"
+#include "MapOptions.h"
 #include "Net.h"
+#include "SchemeData.h"
 #include "Settings.h"
 #include "Stats.h"
 #include "Team.h"
 #include "Videos.h"
-#include "schemes.h"	// generated from frontend-qt6/model/gameSchemeModel.cpp
-#include "weapons.h"	// frontend-qt6
 
 static const char* kSignature = "application/x-vnd.hedgewars-launcher";
-
-#define AMMO(n) AMMOLINE_##n##_QT AMMOLINE_##n##_PROB AMMOLINE_##n##_DELAY AMMOLINE_##n##_CRATE
-static const struct { const char* name; const char* ammo; } kWeapons[] = {	// hwconsts.cpp
-	{"Default", AMMO(DEFAULT)}, {"Crazy", AMMO(CRAZY)}, {"Pro Mode", AMMO(PROMODE)},
-	{"Shoppa", AMMO(SHOPPA)}, {"Clean Slate", AMMO(CLEAN)}, {"Minefield", AMMO(MINES)},
-	{"Thinking with Portals", AMMO(PORTALS)}, {"One of Everything", AMMO(ONEEVERY)},
-	{"Highlander", AMMO(HIGHLANDER)}, {"Balanced Random Weapon", AMMO(BRW)},
-	{"Construction Mode", AMMO(CONSTRUCTION)}, {"Shoppa Pro", AMMO(SHOPPAPRO)},
-	{"HedgeEditor", AMMO(HEDGEEDITOR)},
-};
 
 // GameCFGWidget::getGameFlags: scheme fields 1..25
 static const uint32 kFlagBits[26] = {0, 0x1000, 0x10, 0x4, 0x8, 0x20, 0x40, 0x80, 0x100,
@@ -74,9 +65,9 @@ static const char* const kOpponents[] = {
 	"Computer (very hard)", "Computer (hard)", "Computer (medium)",
 	"Computer (easy)", "Computer (very easy)", "Another player on this computer",
 };
-static const char* const kGenerated[] = {"Random island", "Maze", "Cave", "Forts", "Hand-drawn"};
-static const int kGeneratedGen[] = {0, 1, 2, 4, 3};	// e$mapgen
-static const int kNumGenerated = 5, kHandDrawn = 4;	// then the fixed maps
+static const char* const kGenerated[] = {"Random island", "Maze", "Cave", "Forts", "WFC", "Hand-drawn"};
+static const int kGeneratedGen[] = {0, 1, 2, 4, 5, 3};	// e$mapgen
+static const int kGenCount = 6, kHandDrawn = 5;	// then the fixed maps
 static const char* const kMissionKinds[] = {"Training", "Challenge", "Scenario"};
 static const char* const kMissionKindLabels[] = {"Training", "Challenges", "Scenarios"};
 
@@ -86,7 +77,7 @@ enum {
 	kMsgScheme = 'schm', kMsgStyle = 'styl', kMsgMap = 'map ', kMsgMissionKind = 'mkin',
 	kMsgMissionSel = 'msel', kMsgCampaign = 'camp', kMsgCampaignSel = 'csel',
 	kMsgRecordingSel = 'rsel', kMsgSettings = 'sett', kMsgTab = 'tab ', kMsgEditDrawing = 'edrw',
-	kMsgNetGame = 'netg', kMsgContent = 'cont',
+	kMsgNetGame = 'netg', kMsgContent = 'cont', kMsgEditSchemes = 'edsc', kMsgEditWeapons = 'edwp',
 };
 
 static BMessenger sWindow;
@@ -239,13 +230,9 @@ public:
 		fHogs->SetRange(1, 8);
 		fHogs->SetValue(4);
 		std::vector<std::string> names;
-		for (const Scheme& s : kSchemes)
-			names.push_back(s.name);
 		fScheme = Popup("Scheme:", names, 0, kMsgScheme);
-		names.clear();
-		for (const auto& w : kWeapons)
-			names.push_back(w.name);
 		fWeapons = Popup("Weapons:", names, 0, 0);
+		FillSchemeMenus("", "");
 		fStyles = list_dir("Scripts/Multiplayer", ".lua", false);
 		names = {"Normal"};
 		for (const std::string& s : fStyles)
@@ -253,7 +240,7 @@ public:
 		fStyle = Popup("Style:", names, 0, kMsgStyle);
 		fStyle->Menu()->AddItem(new BSeparatorItem(), 1);
 
-		names.assign(kGenerated, kGenerated + kNumGenerated);
+		names.assign(kGenerated, kGenerated + kGenCount);
 		for (const std::string& m : list_dir("Maps", NULL, true)) {
 			BPath dir(gDataDir.Path(), ("Maps/" + m).c_str());
 			// missions (with a map.lua) and the test map aren't for a match
@@ -264,7 +251,7 @@ public:
 		for (const std::string& m : fMaps)
 			names.push_back(spaced(m));
 		fMap = Popup("Map:", names, 0, kMsgMap);
-		fMap->Menu()->AddItem(new BSeparatorItem(), kNumGenerated);
+		fMap->Menu()->AddItem(new BSeparatorItem(), kGenCount);
 		fEditDrawing = new BButton("Edit drawing…", new BMessage(kMsgEditDrawing));
 
 		names.clear();
@@ -290,13 +277,19 @@ public:
 				.Add(fHogs->CreateLabelLayoutItem(), 0, 1)
 				.Add(hogsField, 1, 1)
 				.AddMenuField(fScheme, 0, 2)
+				.Add(new BButton("Edit…", new BMessage(kMsgEditSchemes)), 2, 2)
 				.AddMenuField(fWeapons, 0, 3)
+				.Add(new BButton("Edit…", new BMessage(kMsgEditWeapons)), 2, 3)
 				.AddMenuField(fStyle, 0, 4)
 				.AddMenuField(fMap, 0, 5)
 				.Add(fEditDrawing, 2, 5)
 				.AddMenuField(fTheme, 0, 6)
-				.AddGlue(2, 0)
-				.SetColumnWeight(2, 10)
+				.AddMenuField(fMapOptions.size, 0, 7)
+				.AddMenuField(fMapOptions.maze, 0, 8)
+				.Add(fMapOptions.feature, 0, 9, 2)
+				.AddTextControl(fMapOptions.seed, 0, 10)
+				.AddGlue(3, 0)
+				.SetColumnWeight(3, 10)
 			.End()
 			.AddGlue()
 			.AddGroup(B_HORIZONTAL)
@@ -345,8 +338,14 @@ public:
 
 	std::string MatchConfig()
 	{
-		const Scheme& s = kSchemes[std::max(Marked(fScheme), 0)];
-		std::string ammo = kWeapons[std::max(Marked(fWeapons), 0)].ammo;
+		GameScheme s = fSchemeList[0];
+		for (const GameScheme& g : fSchemeList)
+			if (g.name == MarkedLabel(fScheme))
+				s = g;
+		std::string ammo = fWeaponList[0].ammo;
+		for (const WeaponSet& w : fWeaponList)
+			if (w.name == MarkedLabel(fWeapons))
+				ammo = w.ammo;
 		std::string buf;
 		add(buf, "TL");
 		int style = Marked(fStyle);
@@ -354,15 +353,15 @@ public:
 			add(buf, "escript Scripts/Multiplayer/" + fStyles[style - 1] + ".lua");
 		int map = Marked(fMap);
 		std::string theme = MarkedLabel(fTheme);
-		if (map >= kNumGenerated) {
-			std::string name = fMaps[map - kNumGenerated];
+		if (map >= kGenCount) {
+			std::string name = fMaps[map - kGenCount];
 			add(buf, "emap " + name);
 			std::vector<std::string> cfg = read_lines(("Maps/" + name + "/map.cfg").c_str());
 			if (!cfg.empty())
 				theme = cfg[0];
 		}
 		add(buf, "etheme " + theme);
-		add(buf, "eseed " + new_seed());
+		add(buf, "eseed " + fMapOptions.Seed());
 		uint32 flags = 0;
 		for (int i = 1; i <= 25; i++)
 			if (s.v[i])
@@ -370,12 +369,12 @@ public:
 		add(buf, "e$gmflags " + std::to_string(flags));
 		for (int i = 0; i < 18; i++)
 			add(buf, std::string("e$") + kNumbers[i].cmd + " " + std::to_string(s.v[26 + i] * kNumbers[i].scale));
-		int gen = map >= kNumGenerated ? 0 : kGeneratedGen[map];
-		add(buf, "e$template_filter " + std::to_string(gen == 0 ? 1 << (rand() % 3) : rand() % 6));
-		// a drawing is 4096 x 2048 at feature size 12, the Qt frontend's default
-		add(buf, "e$feature_size " + std::to_string(gen == 3 ? 12 : rand() % 16 + 6));
+		int gen = map >= kGenCount ? 0 : kGeneratedGen[map];
+		std::string after;
+		fMapOptions.Config(gen, buf, after);
 		add(buf, "e$mapgen " + std::to_string(gen));
-		add(buf, std::string("e$scriptparam ") + (s.scriptparam ? s.scriptparam : ""));
+		add(buf, "e$scriptparam " + s.scriptparam);
+		buf += after;
 		if (gen == 3)
 			buf += drawn_map_config();
 
@@ -401,6 +400,9 @@ public:
 				add(buf, "eammstore");
 			buf += team_config(t, fHogs->Value(), s.v[28], false);
 		}
+		if (getenv("HEDGEWARS_LOG_CONFIG"))	// every message, one per line, for checking what the engine gets
+			for (size_t i = 0; i < buf.size(); i += (uint8)buf[i] + 1)
+				fprintf(stderr, "config: %s\n", buf.substr(i + 1, (uint8)buf[i]).c_str());
 		return buf;
 	}
 
@@ -609,7 +611,8 @@ public:
 	std::vector<std::pair<const char*, BMenuField*>> SavedPopups()
 	{
 		return {{"opponent", fOpponent}, {"scheme", fScheme}, {"weapons", fWeapons},
-			{"style", fStyle}, {"map", fMap}, {"theme", fTheme},
+			{"style", fStyle}, {"map", fMap}, {"theme", fTheme}, {"map size", fMapOptions.size},
+			{"maze style", fMapOptions.maze},
 			{"mission kind", fMissionKind}, {"campaign", fCampaign}};
 	}
 
@@ -633,6 +636,7 @@ public:
 					Mark(p.second, str);
 			int32 v;
 			if (s.FindInt32("hogs", &v) == B_OK) fHogs->SetValue(v);
+			fMapOptions.feature->SetValue(s.GetInt32("feature size", 12));
 			if (s.FindInt32("tab", &v) == B_OK) fTabs->Select(v);
 		}
 		fTeamView->Load(s);
@@ -646,6 +650,7 @@ public:
 		for (const auto& p : SavedPopups())
 			s.AddString(p.first, MarkedLabel(p.second).c_str());
 		s.AddInt32("hogs", fHogs->Value());
+		s.AddInt32("feature size", fMapOptions.feature->Value());
 		s.AddInt32("tab", fTabs->Selection());
 		fTeamView->Save(s);
 		save_message(s, SettingsPath());
@@ -654,8 +659,35 @@ public:
 	// a fixed map brings its own theme
 	void UpdateThemeField()
 	{
-		fTheme->SetEnabled(Marked(fMap) < kNumGenerated);
-		fEditDrawing->SetEnabled(Marked(fMap) == kHandDrawn);
+		int map = Marked(fMap);
+		fTheme->SetEnabled(map < kGenCount);
+		fEditDrawing->SetEnabled(map == kHandDrawn);
+		fMapOptions.Update(map < kGenCount ? kGeneratedGen[std::max(map, 0)] : -1);
+	}
+
+	// predefined schemes and weapon sets, then the user's; keeps the choice when it's still there
+	void FillSchemeMenus(std::string scheme, std::string weapons)
+	{
+		if (scheme.empty())
+			scheme = MarkedLabel(fScheme);
+		if (weapons.empty())
+			weapons = MarkedLabel(fWeapons);
+		fSchemeList = load_schemes(BPath(gUserDir.Path(), "Schemes/Game").Path());
+		fWeaponList = load_weapons(BPath(gUserDir.Path(), "Schemes/Ammo").Path());
+		auto fill = [](BMenuField* f, const auto& list, const std::string& select, uint32 what) {
+			BMenu* m = f->Menu();
+			m->RemoveItems(0, m->CountItems(), true);
+			for (size_t i = 0; i < list.size(); i++) {
+				const auto& item = list[i];
+				if (i > 0 && !item.predefined && list[i - 1].predefined)
+					m->AddItem(new BSeparatorItem());
+				m->AddItem(new BMenuItem(item.name.c_str(), what ? new BMessage(what) : NULL));
+			}
+			BMenuItem* marked = m->FindItem(select.c_str());
+			(marked ? marked : m->ItemAt(0))->SetMarked(true);
+		};
+		fill(fScheme, fSchemeList, scheme, kMsgScheme);
+		fill(fWeapons, fWeaponList, weapons, 0);
 	}
 
 	// recordings can come and go outside the launcher
@@ -687,7 +719,7 @@ public:
 		std::string buf;
 		add(buf, "TL");
 		buf += team_config(fTeamView->Team(), 8, 100, true);
-		add(buf, "eseed " + new_seed());
+		add(buf, "eseed " + fMapOptions.Seed());
 		add(buf, "escript " + script);
 		return buf;
 	}
@@ -767,6 +799,14 @@ public:
 				FillMissions();
 				FillCampaign();
 				break;
+			case kMsgEditSchemes: show_scheme_editor(BMessenger(this), MarkedLabel(fScheme)); break;
+			case kMsgEditWeapons: show_weapon_editor(BMessenger(this), MarkedLabel(fWeapons)); break;
+			case kMsgEditorsChanged: {
+				std::string select = msg->GetString("select", "");
+				bool schemes = strcmp(msg->GetString("kind", ""), "schemes") == 0;
+				FillSchemeMenus(schemes ? select : "", schemes ? "" : select);
+				break;
+			}
 			case kMsgTab: {
 				int i = fTabs->Selection();
 				SetDefaultButton(i >= 0 && i < 5 ? fDefault[i] : NULL);	// the Team tab has none
@@ -842,6 +882,9 @@ private:
 	VideosView* fVideos;
 	BStringView* fStatus;
 	BMenuField *fOpponent, *fScheme, *fWeapons, *fStyle, *fMap, *fTheme;
+	MapOptions fMapOptions;
+	std::vector<GameScheme> fSchemeList;
+	std::vector<WeaponSet> fWeaponList;
 	BSpinner* fHogs;
 	BMenuField* fMissionKind;
 	BListView* fMissionList;

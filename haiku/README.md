@@ -36,8 +36,10 @@ A native launcher (`launcher/`) replaces the Qt
 frontend's local pages, in tabs:
 
 - **Match**: opponent (the computer at five levels, or a second player),
-  hedgehogs per team, the 16 predefined schemes, the weapon sets, game
-  styles, generated, hand-drawn or fixed maps, theme
+  hedgehogs per team, scheme and weapon set (the predefined ones and your
+  own, each with an editor window), game styles, generated, hand-drawn or
+  fixed maps, theme, and for generated maps the map size, maze style,
+  feature size and seed
 - **Missions**: training, challenges and scenarios, with their pictures and
   descriptions; won missions are marked
 - **Campaigns**: the missions your progress has unlocked
@@ -90,7 +92,8 @@ draws a hand-drawn map (pencil, rectangle, ellipse, eraser, line width,
 undo, clear; opens and saves the Qt frontend's `.hwmap` files).
 
 Settings, teams, recordings and mission progress live in
-`~/config/settings/Hedgewars`.
+`~/config/settings/Hedgewars`; your schemes and weapon sets in its
+`Schemes/Game/*.hwg` and `Schemes/Ammo/*.hwa`, the Qt frontend's files.
 
 ## Build
 
@@ -105,8 +108,8 @@ On Haiku R1/beta6 (x86_64), from the top of the tree (the package also runs on R
 `python3 haiku/tools/gen-schemes.py > haiku/launcher/schemes.h`.
 
 `make -f haiku/Makefile test` runs the tests: the surface (blit and clipping),
-statistics, server protocol, add-on list, INI file and drawn map code on any system, and on Haiku also the
-launcher's progress file.
+statistics, server protocol, add-on list, INI file, drawn map and scheme file code on any system,
+and on Haiku also the launcher's progress file.
 
 `HWHAIKU_DEBUG=1` makes the engine print every input event it receives.
 
@@ -133,7 +136,8 @@ launcher's progress file.
 | Video recording | works: a clip recorded with R in a match became an mp4 that MediaPlayer plays with sound; WebM at 24 frames/s checked the same way; size and bit rate are fixed |
 | Network play | works: a net game between Haiku R1/beta6 and Renku (two QEMU machines) through the repo's `hedgewars-server` on the host: lobby, room, teams, hedgehog count, chat in the lobby, the room and the game, the game in sync to its end (the same statistics on both) and a demo kept on each; the room password and taken-nickname prompts checked; the registered-nickname password exchange is written, not tested (the local server has no accounts) |
 | Downloadable content | works: the list loads from hedgewars.org and a package (Ready Timer) lands in the Data folder, on Renku; the launcher's own menus don't list what add-ons bring (the engine uses them) |
-| Scheme and weapon set editors | not in the launcher (the predefined schemes and weapon sets are) |
+| Scheme and weapon set editors | works: a new scheme (turn time 20 s) and a copied weapon set (2 bazookas) were made in the editors, saved as `.hwg`/`.hwa`, and the engine got them (turn timer counted from 20; `HEDGEWARS_LOG_CONFIG=1` prints the config sent); copy and delete checked |
+| Map size, maze style, feature size, seed | works for a maze ("Large islands" and a typed seed reached the engine: it logged `large_islands`); WFC is offered but not played |
 | App icon | HVIF, from `tools/make-icon.py` |
 | arm64 | not built: Renku OS arm64 (hrev60072_940) has no OpenGL (no Mesa in its ports repository, no OpenGL kit in the system), which the engine draws with; Rust has no aarch64 Haiku target either (it would need a custom target and a nightly toolchain). Free Pascal is no longer needed |
 

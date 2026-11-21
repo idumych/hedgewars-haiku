@@ -118,6 +118,9 @@ test:
 	$(CXX) -std=c++17 -Wall -g $(TEST_FLAGS) -Ihaiku/launcher -o $(OBJ)/ini_test haiku/tests/ini_test.cpp \
 		haiku/launcher/Ini.cpp haiku/launcher/Binds.cpp haiku/launcher/DrawnMap.cpp -lz
 	$(OBJ)/ini_test
+	$(CXX) -std=c++17 -Wall -g $(TEST_FLAGS) -Ihaiku/launcher -Ifrontend-qt6 \
+		-o $(OBJ)/scheme_test haiku/tests/scheme_test.cpp haiku/launcher/SchemeData.cpp
+	$(OBJ)/scheme_test
 ifeq ($(shell uname -s),Haiku)
 	$(CXX) -std=c++17 -Wall -Ihaiku/launcher -o $(OBJ)/progress_test haiku/tests/progress_test.cpp \
 		haiku/launcher/Game.cpp haiku/launcher/Settings.cpp haiku/launcher/BindEditor.cpp \
