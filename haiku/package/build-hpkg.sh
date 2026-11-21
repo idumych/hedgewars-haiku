@@ -11,13 +11,14 @@ OUT=haiku/build/hedgewars-$VERSION-$REVISION-$ARCH.hpkg
 make -f haiku/Makefile DATADIR=/boot/system/data/hedgewars
 
 rm -rf "$STAGE" "$OUT"
-mkdir -p "$STAGE/apps/Hedgewars" "$STAGE/data/hedgewars" "$STAGE/data/deskbar/menu/Applications"
+mkdir -p "$STAGE/apps/Hedgewars" "$STAGE/bin" "$STAGE/data/hedgewars" "$STAGE/data/deskbar/menu/Applications"
 cp -a haiku/build/Hedgewars/Hedgewars haiku/build/Hedgewars/hwengine haiku/build/Hedgewars/lib \
 	"$STAGE/apps/Hedgewars/"
 # the game data, minus the build files that live among it
 tar -C share/hedgewars --exclude=CMakeLists.txt --exclude='*.in' -cf - Data \
 	| tar -C "$STAGE/data/hedgewars" -xf -
 ln -s ../../../../apps/Hedgewars/Hedgewars "$STAGE/data/deskbar/menu/Applications/Hedgewars"
+ln -s ../apps/Hedgewars/Hedgewars "$STAGE/bin/hedgewars"
 
 cat > "$STAGE/.PackageInfo" <<EOF
 name			hedgewars
@@ -37,9 +38,10 @@ urls			{ "https://hedgewars.org" }
 provides		{
 	hedgewars = $VERSION-$REVISION
 	app:Hedgewars = $VERSION-$REVISION
+	cmd:hedgewars = $VERSION-$REVISION
 }
 requires		{
-	haiku
+	haiku >= r1~beta6
 	lib:libGL
 	lib:libcrypto
 	lib:libcurl

@@ -26,6 +26,7 @@
 #include <Window.h>
 
 #include <algorithm>
+#include <math.h>
 #include <stdio.h>
 
 enum { kMsgSelect = 'esel', kMsgNew = 'enew', kMsgCopy = 'ecpy', kMsgDelete = 'edel',
@@ -247,6 +248,14 @@ static BMenuField* popup(const char* label, const std::vector<std::string>& item
 	return new BMenuField(label, menu);
 }
 
+// a spinner's text and its two buttons, which grow with the font
+static float spinner_width(const char* digits)
+{
+	font_height fh;
+	be_plain_font->GetHeight(&fh);
+	return be_plain_font->StringWidth(digits) + 2 * ceilf(fh.ascent + fh.descent + fh.leading) + 12;
+}
+
 static int marked(BMenuField* f) { return f->Menu()->IndexOf(f->Menu()->FindMarked()); }
 
 // ── schemes ──
@@ -323,7 +332,7 @@ public:
 			row = f < 8 ? f : f - 8;
 			grid->AddItem(s->CreateLabelLayoutItem(), col, row);
 			BLayoutItem* field = s->CreateTextViewLayoutItem();
-			field->SetExplicitMinSize(BSize(be_plain_font->StringWidth("99999") + 30, B_SIZE_UNSET));
+			field->SetExplicitMinSize(BSize(spinner_width("99999"), B_SIZE_UNSET));
 			grid->AddItem(field, col + 1, row);
 			fControls.push_back(s);
 		}
@@ -470,7 +479,7 @@ public:
 			for (int c = 0; c < 4; c++) {
 				BSpinner* s = new BSpinner("value", NULL, new BMessage(kMsgEdit));
 				s->SetRange(0, kWeaponMax[c]);
-				s->SetExplicitMaxSize(BSize(be_plain_font->StringWidth("99") + 50, B_SIZE_UNSET));
+				s->SetExplicitMaxSize(BSize(spinner_width("99"), B_SIZE_UNSET));
 				grid->AddView(s, 2 + c, row);
 				fSpin.push_back({s, a, c});
 				fControls.push_back(s);

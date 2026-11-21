@@ -112,7 +112,7 @@ public:
 		const char* cols[] = {"Name", "Kind", "Description", "Size", "Credits", "License", "Installed"};
 		float widths[] = {170, 90, 260, 65, 80, 90, 60};
 		for (int i = 0; i < 7; i++)
-			fList->AddColumn(new BStringColumn(cols[i], widths[i], 30, 600, B_TRUNCATE_END), i);
+			fList->AddColumn(new BStringColumn(cols[i], widths[i] * be_plain_font->Size() / 12, 30, 600, B_TRUNCATE_END), i);
 		fList->SetSelectionMessage(new BMessage(kMsgSel));
 		fList->SetInvocationMessage(new BMessage(kMsgDownload));
 		fList->SetExplicitMinSize(BSize(500, 250));

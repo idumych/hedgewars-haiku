@@ -360,9 +360,9 @@ public:
 		BGroupView* v = new BGroupView("lobby", B_VERTICAL);
 		fRooms = new BColumnListView("rooms", B_NAVIGABLE, B_FANCY_BORDER);
 		const char* cols[] = {"Room", "State", "Players", "Teams", "Host", "Map", "Scheme", "Weapons"};
-		float widths[] = {140, 150, 55, 50, 90, 90, 90, 90};
+		float widths[] = {140, 150, 60, 55, 90, 90, 90, 90};	// State holds the room flags
 		for (int i = 0; i < 8; i++)
-			fRooms->AddColumn(new BStringColumn(cols[i], widths[i], 30, 400, B_TRUNCATE_END), i);
+			fRooms->AddColumn(new BStringColumn(cols[i], widths[i] * be_plain_font->Size() / 12, 30, 400, B_TRUNCATE_END), i);
 		fRooms->SetSelectionMessage(new BMessage(kMsgRoomSel));
 		fRooms->SetInvocationMessage(new BMessage(kMsgJoin));
 		fRooms->SetExplicitMinSize(BSize(450, 150));
