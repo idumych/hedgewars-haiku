@@ -13,6 +13,9 @@ class BMenuField;
 class BTextView;
 class VideoPicture;
 
+// sent to the window when the last video being made is done
+enum { kMsgVideosReady = 'vrdy' };
+
 class VideosView : public BGroupView {
 public:
 	VideosView();

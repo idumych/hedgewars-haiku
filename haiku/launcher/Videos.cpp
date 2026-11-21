@@ -324,6 +324,8 @@ void VideosView::MessageReceived(BMessage* msg)
 			}
 			if (msg->what == kMsgVideoDone) {
 				Fill();
+				if (fEncoding.empty())	// the window's status line said a video was being made
+					Window()->PostMessage(kMsgVideosReady);
 				const char* error;
 				if (msg->FindString("error", &error) == B_OK)
 					(new BAlert("Hedgewars", (std::string("The video could not be made.")

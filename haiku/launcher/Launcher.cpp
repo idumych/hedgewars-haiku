@@ -824,6 +824,10 @@ public:
 			case kMsgMissionSel: ShowMission(); break;
 			case kMsgCampaign: FillCampaign(); break;
 			case kMsgCampaignSel: ShowCampaignMission(); break;
+			case kMsgVideosReady:
+				if (strstr(fStatus->Text(), "The video is being made"))
+					fStatus->SetText("The video is ready in Videos.");
+				break;
 			case kMsgGameOver: {
 				if (IsHidden())
 					Show();
