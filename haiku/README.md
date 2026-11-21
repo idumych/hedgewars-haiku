@@ -55,9 +55,15 @@ has one (teams, schemes, weapon sets, `settings.ini`, drawn maps).
 
 ## Install
 
-There's no release package yet. Build it (below), then:
+Download the `.hpkg` from the
+[releases page](https://github.com/idumych/hedgewars-haiku/releases)
+(the first build is
+[1.1.0-dev](https://github.com/idumych/hedgewars-haiku/releases/tag/haiku-1.1.0-dev.1)),
+then:
 
-    pkgman install haiku/build/hedgewars-1.1.0~dev-1-x86_64.hpkg
+    pkgman install hedgewars-1.1.0-dev-1-x86_64.hpkg
+
+or build the package yourself (below).
 
 Hedgewars appears in Deskbar's Applications menu, and `hedgewars` starts it
 from Terminal. The package needs Haiku R1/beta6 or Renku OS on x86_64, and
