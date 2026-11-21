@@ -41,7 +41,7 @@ HW_API int SDLNet_ResolveHost(IPaddress* addr, const char* host, Uint16 port)
 	hostent* he = gethostbyname(host);
 	if (!he) {
 		addr->host = INADDR_NONE;
-		hw_set_error("can't resolve %s", host);
+		SDL_SetError("can't resolve %s", host);
 		return -1;
 	}
 	memcpy(&addr->host, he->h_addr, 4);
@@ -52,7 +52,7 @@ HW_API TCPsocket* SDLNet_TCP_Open(IPaddress* ip)
 {
 	int fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (fd < 0) {
-		hw_set_error("socket failed");
+		SDL_SetError("socket failed");
 		return NULL;
 	}
 	sockaddr_in sa = {};
@@ -65,7 +65,7 @@ HW_API TCPsocket* SDLNet_TCP_Open(IPaddress* ip)
 		int yes = 1;
 		setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
 		if (bind(fd, (sockaddr*)&sa, sizeof(sa)) < 0 || listen(fd, 5) < 0) {
-			hw_set_error("can't listen on port %d", ntohs(ip->port));
+			SDL_SetError("can't listen on port %d", ntohs(ip->port));
 			close(fd);
 			free(s);
 			return NULL;
@@ -74,7 +74,7 @@ HW_API TCPsocket* SDLNet_TCP_Open(IPaddress* ip)
 		s->local = *ip;
 	} else {
 		if (connect(fd, (sockaddr*)&sa, sizeof(sa)) < 0) {
-			hw_set_error("can't connect to port %d", ntohs(ip->port));
+			SDL_SetError("can't connect to port %d", ntohs(ip->port));
 			close(fd);
 			free(s);
 			return NULL;
@@ -83,22 +83,6 @@ HW_API TCPsocket* SDLNet_TCP_Open(IPaddress* ip)
 		setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes));
 		s->remote = *ip;
 	}
-	return s;
-}
-
-HW_API TCPsocket* SDLNet_TCP_Accept(TCPsocket* server)
-{
-	if (!server || !server->sflag)
-		return NULL;
-	server->ready = 0;
-	sockaddr_in sa;
-	socklen_t len = sizeof(sa);
-	int fd = accept(server->channel, (sockaddr*)&sa, &len);
-	if (fd < 0)
-		return NULL;
-	TCPsocket* s = (TCPsocket*)calloc(1, sizeof(TCPsocket));
-	s->channel = fd;
-	s->remote = {sa.sin_addr.s_addr, sa.sin_port};
 	return s;
 }
 
@@ -150,7 +134,7 @@ HW_API int SDLNet_AddSocket(SocketSet* set, TCPsocket* s)
 		if (set->sockets[i] == s)
 			return set->count;	// the engine adds its socket every frame
 	if (set->count >= set->max) {
-		hw_set_error("socket set is full");
+		SDL_SetError("socket set is full");
 		return -1;
 	}
 	set->sockets[set->count++] = s;

@@ -91,7 +91,7 @@ union SDL_Event {
 };
 
 // internal helpers shared between the source files
-void hw_set_error(const char* fmt, ...);
+HW_API int SDL_SetError(const char* fmt, ...);
 void hw_push_event(const SDL_Event& e);
 Uint32 hw_ticks();
 // whole RWops contents in a malloc'd buffer; closes it when freesrc

@@ -33,7 +33,6 @@ struct Channel {
 	float fade = 1, fadeStep = 0;	// fade gain and its change per frame
 	bool haltAfterFade = false;
 	int64_t framesLeft = -1;	// -1: no time limit
-	float distance = 1;		// 1 = near
 };
 
 static pthread_mutex_t sLock = PTHREAD_MUTEX_INITIALIZER;
@@ -46,9 +45,6 @@ static int sMusicLoops;
 static bool sMusicPaused;
 static int sMusicVolume = 128;
 static float sMusicFade = 1, sMusicFadeStep;
-typedef void (*PostMix)(void*, Uint8*, int);
-static PostMix sPostMix;
-static void* sPostMixArg;
 
 static inline int16_t clamp16(int v) { return v > 32767 ? 32767 : v < -32768 ? -32768 : v; }
 
@@ -56,7 +52,8 @@ static void mix(void*, void* buffer, size_t size, const media_raw_audio_format&)
 {
 	int16_t* out = (int16_t*)buffer;
 	size_t frames = size / 4;
-	std::vector<int> acc(frames * 2, 0);
+	static std::vector<int> acc;	// kept between calls: no allocation on the audio thread
+	acc.assign(frames * 2, 0);
 	pthread_mutex_lock(&sLock);
 	for (Channel& c : sChannels) {
 		if (!c.chunk)
@@ -70,7 +67,7 @@ static void mix(void*, void* buffer, size_t size, const media_raw_audio_format&)
 				c.pos = 0;
 				if (total == 0) { c.chunk = NULL; break; }
 			}
-			float gain = c.volume / 128.f * c.chunk->volume / 128.f * c.fade * c.distance;
+			float gain = c.volume / 128.f * c.chunk->volume / 128.f * c.fade;
 			acc[f * 2] += (int)(src[c.pos * 2] * gain);
 			acc[f * 2 + 1] += (int)(src[c.pos * 2 + 1] * gain);
 			c.pos++;
@@ -103,8 +100,6 @@ static void mix(void*, void* buffer, size_t size, const media_raw_audio_format&)
 	}
 	for (size_t i = 0; i < frames * 2; i++)
 		out[i] = clamp16(acc[i]);
-	if (sPostMix)
-		sPostMix(sPostMixArg, (Uint8*)buffer, (int)size);
 	pthread_mutex_unlock(&sLock);
 }
 
@@ -126,7 +121,7 @@ HW_API int Mix_OpenAudio(int frequency, Uint16, int, int chunksize)
 	if (sPlayer->InitCheck() != B_OK) {
 		delete sPlayer;
 		sPlayer = NULL;
-		hw_set_error("can't open the sound output");
+		SDL_SetError("can't open the sound output");
 		return -1;
 	}
 	sPlayer->SetHasData(true);
@@ -142,17 +137,6 @@ HW_API void Mix_CloseAudio()
 	delete sPlayer;
 	sPlayer = NULL;
 }
-
-HW_API int Mix_QuerySpec(int* freq, Uint16* format, int* channels)
-{
-	if (freq) *freq = sRate;
-	if (format) *format = 0x8010;	// AUDIO_S16LSB
-	if (channels) *channels = 2;
-	return sPlayer ? 1 : 0;
-}
-
-HW_API void SDL_LockAudio() { pthread_mutex_lock(&sLock); }
-HW_API void SDL_UnlockAudio() { pthread_mutex_unlock(&sLock); }
 
 // Decode a whole sound file to 16-bit stereo at sRate. Caller frees.
 static int16_t* decode(SDL_RWops* rw, bool freesrc, size_t* outFrames)
@@ -180,7 +164,7 @@ static int16_t* decode(SDL_RWops* rw, bool freesrc, size_t* outFrames)
 	}
 	if (!track) {
 		free(data);
-		hw_set_error("can't decode sound");
+		SDL_SetError("can't decode sound");
 		return NULL;
 	}
 	int channels = fmt.u.raw_audio.channel_count;
@@ -258,7 +242,7 @@ HW_API int Mix_FadeInChannelTimed(int ch, Mix_Chunk* chunk, int loops, int ms, i
 				ch = i;
 	if (!valid(ch)) {
 		pthread_mutex_unlock(&sLock);
-		hw_set_error("no free channels");
+		SDL_SetError("no free channels");
 		return -1;
 	}
 	Channel& c = sChannels[ch];
@@ -269,7 +253,6 @@ HW_API int Mix_FadeInChannelTimed(int ch, Mix_Chunk* chunk, int loops, int ms, i
 	c.fadeStep = ms > 0 ? 1000.f / (ms * (float)sRate) : 0;
 	c.haltAfterFade = false;
 	c.framesLeft = ticks >= 0 ? (int64_t)ticks * sRate / 1000 : -1;
-	c.distance = 1;
 	pthread_mutex_unlock(&sLock);
 	return ch;
 }
@@ -336,16 +319,6 @@ HW_API int Mix_Volume(int ch, int volume)
 	return count ? prev / count : 0;
 }
 
-HW_API int Mix_SetDistance(int ch, Uint8 distance)
-{
-	if (!valid(ch))
-		return 0;
-	pthread_mutex_lock(&sLock);
-	sChannels[ch].distance = (255 - distance) / 255.f;
-	pthread_mutex_unlock(&sLock);
-	return 1;
-}
-
 // shortcut: music is decoded whole into memory (~10 MB per track); stream it if memory gets tight
 HW_API Mix_Music* Mix_LoadMUS_RW(SDL_RWops* rw)
 {
@@ -385,13 +358,10 @@ HW_API int Mix_FadeInMusic(Mix_Music* m, int loops, int ms)
 	return 0;
 }
 
-HW_API int Mix_PlayMusic(Mix_Music* m, int loops) { return Mix_FadeInMusic(m, loops, 0); }
 HW_API int Mix_HaltMusic() { pthread_mutex_lock(&sLock); sMusic = NULL; pthread_mutex_unlock(&sLock); return 0; }
-HW_API int Mix_PlayingMusic() { return sMusic != NULL; }
 // SDLh.pas declares these with an (ignored) argument; SDL_mixer takes none
 HW_API int Mix_PauseMusic(Mix_Music*) { sMusicPaused = true; return 0; }
 HW_API int Mix_ResumeMusic(Mix_Music*) { sMusicPaused = false; return 0; }
-HW_API int Mix_PausedMusic(Mix_Music*) { return sMusicPaused; }
 
 HW_API int Mix_VolumeMusic(int volume)
 {
@@ -399,12 +369,4 @@ HW_API int Mix_VolumeMusic(int volume)
 	if (volume >= 0)
 		sMusicVolume = volume > 128 ? 128 : volume;
 	return prev;
-}
-
-HW_API void Mix_SetPostMix(PostMix fn, void* arg)
-{
-	pthread_mutex_lock(&sLock);
-	sPostMix = fn;
-	sPostMixArg = arg;
-	pthread_mutex_unlock(&sLock);
 }

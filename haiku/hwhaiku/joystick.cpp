@@ -37,7 +37,7 @@ HW_API SDL_Joystick* SDL_JoystickOpen(int i)
 	SDL_Joystick* j = new SDL_Joystick;
 	if (j->stick.GetDeviceName(i, name, sizeof(name)) != B_OK || j->stick.Open(name, true) < 0) {
 		delete j;
-		hw_set_error("can't open joystick %d", i);
+		SDL_SetError("can't open joystick %d", i);
 		return NULL;
 	}
 	j->index = i;
@@ -59,16 +59,10 @@ HW_API void SDL_JoystickClose(SDL_Joystick* j)
 	delete j;
 }
 
-HW_API int SDL_JoystickOpened(int i) { for (auto j : sOpen) if (j->index == i) return 1; return 0; }
-HW_API int SDL_JoystickIndex(SDL_Joystick* j) { return j->index; }
 HW_API int SDL_JoystickNumAxes(SDL_Joystick* j) { return j->axes; }
-HW_API int SDL_JoystickNumBalls(SDL_Joystick*) { return 0; }
 HW_API int SDL_JoystickNumHats(SDL_Joystick* j) { return j->hats; }
 HW_API int SDL_JoystickNumButtons(SDL_Joystick* j) { return j->buttons; }
 HW_API int SDL_JoystickEventState(int state) { if (state >= 0) sEvents = state; return sEvents; }
-HW_API int SDL_JoystickGetAxis(SDL_Joystick* j, int a) { return a < j->axes ? j->axisValues[a] : 0; }
-HW_API Uint16 SDL_JoystickGetBall(SDL_Joystick*, int, int*, int*) { return -1; }
-HW_API Uint8 SDL_JoystickGetButton(SDL_Joystick* j, int b) { return (j->buttonValues >> b) & 1; }
 
 // Haiku hats count clockwise from 1 = up; SDL uses up/right/down/left bits
 static Uint8 sdl_hat(uint8 v)
@@ -76,7 +70,6 @@ static Uint8 sdl_hat(uint8 v)
 	static const Uint8 kMap[9] = {0, 1, 3, 2, 6, 4, 12, 8, 9};
 	return v < 9 ? kMap[v] : 0;
 }
-HW_API Uint8 SDL_JoystickGetHat(SDL_Joystick* j, int h) { return h < j->hats ? sdl_hat(j->hatValues[h]) : 0; }
 
 void hw_joystick_poll()
 {
@@ -135,5 +128,3 @@ void hw_joystick_poll()
 		j->buttonValues = buttons;
 	}
 }
-
-HW_API void SDL_JoystickUpdate() { hw_joystick_poll(); }

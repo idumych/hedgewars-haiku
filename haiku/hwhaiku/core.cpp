@@ -4,7 +4,6 @@
 #include <Clipboard.h>
 #include <OS.h>
 
-#include <pthread.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,16 +11,6 @@
 
 static char sError[512];
 static bigtime_t sStart = system_time();
-
-void hw_set_error(const char* fmt, ...)
-{
-	va_list ap;
-	va_start(ap, fmt);
-	vsnprintf(sError, sizeof(sError), fmt, ap);
-	va_end(ap);
-}
-
-Uint32 hw_ticks() { return (Uint32)((system_time() - sStart) / 1000); }
 
 HW_API int SDL_SetError(const char* fmt, ...)
 {
@@ -32,15 +21,14 @@ HW_API int SDL_SetError(const char* fmt, ...)
 	return -1;
 }
 
+Uint32 hw_ticks() { return (Uint32)((system_time() - sStart) / 1000); }
+
 HW_API const char* SDL_GetError() { return sError; }
 HW_API Uint32 SDL_GetTicks() { return hw_ticks(); }
 HW_API void SDL_Delay(Uint32 ms) { snooze((bigtime_t)ms * 1000); }
 HW_API void SDL_free(void* p) { free(p); }
-HW_API int SDL_SetHint(const char*, const char*) { return 1; }
 
-// video.cpp
-bool hw_start_app();
-void hw_stop_app();
+void hw_stop_app();	// video.cpp
 
 HW_API int SDL_InitSubSystem(Uint32 flags)
 {
@@ -74,34 +62,8 @@ HW_API HWThread* SDL_CreateThread(int (*fn)(void*), const char* name, void* data
 	return t;
 }
 
-HW_API void SDL_WaitThread(HWThread* t, int* status)
-{
-	if (!t)
-		return;
-	status_t ret;
-	wait_for_thread(t->id, &ret);
-	if (status)
-		*status = t->status;
-	delete t;
-}
-
 // shortcut: a detached thread's record leaks (one small struct per screenshot)
 HW_API void SDL_DetachThread(HWThread*) {}
-HW_API void SDL_KillThread(HWThread* t) { if (t) kill_thread(t->id); }
-
-HW_API pthread_mutex_t* SDL_CreateMutex()
-{
-	pthread_mutexattr_t a;
-	pthread_mutexattr_init(&a);
-	pthread_mutexattr_settype(&a, PTHREAD_MUTEX_RECURSIVE);	// SDL mutexes are recursive
-	pthread_mutex_t* m = new pthread_mutex_t;
-	pthread_mutex_init(m, &a);
-	pthread_mutexattr_destroy(&a);
-	return m;
-}
-HW_API void SDL_DestroyMutex(pthread_mutex_t* m) { if (m) { pthread_mutex_destroy(m); delete m; } }
-HW_API int SDL_LockMutex(pthread_mutex_t* m) { return pthread_mutex_lock(m); }
-HW_API int SDL_UnlockMutex(pthread_mutex_t* m) { return pthread_mutex_unlock(m); }
 
 HW_API void* SDL_CreateSemaphore(Uint32 initial)
 {
@@ -115,56 +77,6 @@ HW_API int SDL_SemPost(void* s) { return release_sem((sem_id)(intptr_t)s - 1) ==
 // ── RWops ──
 HW_API SDL_RWops* SDL_AllocRW() { return (SDL_RWops*)calloc(1, sizeof(SDL_RWops)); }
 HW_API void SDL_FreeRW(SDL_RWops* rw) { free(rw); }
-
-static Sint64 file_size(SDL_RWops* rw)
-{
-	FILE* f = (FILE*)rw->hidden.stdio.fp;
-	long pos = ftell(f);
-	fseek(f, 0, SEEK_END);
-	long end = ftell(f);
-	fseek(f, pos, SEEK_SET);
-	return end;
-}
-static Sint64 file_seek(SDL_RWops* rw, Sint64 off, int whence)
-{
-	FILE* f = (FILE*)rw->hidden.stdio.fp;
-	if (fseeko(f, off, whence) != 0)
-		return SDL_SetError("seek failed");
-	return ftello(f);
-}
-static size_t file_read(SDL_RWops* rw, void* p, size_t size, size_t n)
-{
-	return fread(p, size, n, (FILE*)rw->hidden.stdio.fp);
-}
-static size_t file_write(SDL_RWops* rw, const void* p, size_t size, size_t n)
-{
-	return fwrite(p, size, n, (FILE*)rw->hidden.stdio.fp);
-}
-static int file_close(SDL_RWops* rw)
-{
-	int r = fclose((FILE*)rw->hidden.stdio.fp);
-	SDL_FreeRW(rw);
-	return r;
-}
-
-HW_API SDL_RWops* SDL_RWFromFile(const char* name, const char* mode)
-{
-	FILE* f = fopen(name, mode);
-	if (!f) {
-		SDL_SetError("can't open %s", name);
-		return NULL;
-	}
-	SDL_RWops* rw = SDL_AllocRW();
-	rw->size = file_size;
-	rw->seek = file_seek;
-	rw->read = file_read;
-	rw->write = file_write;
-	rw->close = file_close;
-	rw->type = 2;
-	rw->hidden.stdio.autoclose = 1;
-	rw->hidden.stdio.fp = f;
-	return rw;
-}
 
 void* hw_read_all(SDL_RWops* rw, size_t* size, bool freesrc)
 {

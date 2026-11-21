@@ -672,6 +672,14 @@ public:
 	}
 
 	// ── settings ──
+	// the menus whose choice is remembered, by settings key
+	std::vector<std::pair<const char*, BMenuField*>> SavedPopups()
+	{
+		return {{"opponent", fOpponent}, {"scheme", fScheme}, {"weapons", fWeapons},
+			{"style", fStyle}, {"map", fMap}, {"theme", fTheme},
+			{"mission kind", fMissionKind}, {"campaign", fCampaign}};
+	}
+
 	BPath SettingsPath() { return BPath(gUserDir.Path(), "launcher_settings"); }
 
 	void LoadSettings()
@@ -689,13 +697,9 @@ public:
 				ResizeTo(frame.Width(), frame.Height());	// the size limits keep it big enough
 				MoveOnScreen();
 			}
-			struct { const char* key; BMenuField* field; } popups[] = {
-				{"opponent", fOpponent}, {"scheme", fScheme}, {"weapons", fWeapons},
-				{"style", fStyle}, {"map", fMap}, {"theme", fTheme},
-				{"mission kind", fMissionKind}, {"campaign", fCampaign}};
-			for (const auto& p : popups)
-				if (s.FindString(p.key, &str) == B_OK)
-					Mark(p.field, str);
+			for (const auto& p : SavedPopups())
+				if (s.FindString(p.first, &str) == B_OK)
+					Mark(p.second, str);
 			int32 v;
 			if (s.FindInt32("hogs", &v) == B_OK) fHogs->SetValue(v);
 			if (s.FindInt32("tab", &v) == B_OK) fTabs->Select(v);
@@ -727,12 +731,8 @@ public:
 		FieldsToTeam();
 		BMessage s;
 		s.AddRect("frame", Frame());
-		struct { const char* key; BMenuField* field; } popups[] = {
-			{"opponent", fOpponent}, {"scheme", fScheme}, {"weapons", fWeapons},
-			{"style", fStyle}, {"map", fMap}, {"theme", fTheme},
-			{"mission kind", fMissionKind}, {"campaign", fCampaign}};
-		for (const auto& p : popups)
-			s.AddString(p.key, MarkedLabel(p.field).c_str());
+		for (const auto& p : SavedPopups())
+			s.AddString(p.first, MarkedLabel(p.second).c_str());
 		s.AddInt32("hogs", fHogs->Value());
 		s.AddInt32("tab", fTabs->Selection());
 		s.AddBool("fullscreen", fFullscreen->IsMarked());
@@ -749,8 +749,7 @@ public:
 			t.AddString("hat", fTeam.hats[h].c_str());
 		}
 		s.AddMessage("team", &t);
-		BFile file(SettingsPath().Path(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
-		s.Flatten(&file);
+		save_message(s, SettingsPath());
 	}
 
 	// a fixed map brings its own theme

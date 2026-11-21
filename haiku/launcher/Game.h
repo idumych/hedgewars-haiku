@@ -2,6 +2,7 @@
 // running one game over IPC, recordings and mission/campaign progress.
 #pragma once
 
+#include <Message.h>
 #include <Path.h>
 #include <SupportDefs.h>
 
@@ -43,6 +44,9 @@ struct Outcome {
 };
 
 Outcome run_game(const Game& g);
+
+// writes a copy beside the file and renames it over, so a crash never leaves half a file
+bool save_message(const BMessage& m, const BPath& path);
 
 std::string get_progress(const std::string& key);
 void set_progress(const std::string& key, const std::string& value);

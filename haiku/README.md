@@ -42,6 +42,9 @@ On Haiku R1/beta6 (x86_64), from the top of the tree (the package also runs on R
 `launcher/schemes.h` is generated from the Qt frontend's scheme list:
 `python3 haiku/tools/gen-schemes.py > haiku/launcher/schemes.h`.
 
+`make -f haiku/Makefile test` runs the tests: the surface (blit and clipping)
+code on any system, and on Haiku also the launcher's progress file.
+
 `HWHAIKU_DEBUG=1` makes the engine print every input event it receives.
 
 ## Status

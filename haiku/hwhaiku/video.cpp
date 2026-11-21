@@ -24,8 +24,6 @@ Uint8 hw_keystate[512];
 // ── event queue ──
 static std::deque<SDL_Event> sQueue;
 static pthread_mutex_t sQueueLock = PTHREAD_MUTEX_INITIALIZER;
-typedef int (*EventFilter)(SDL_Event*);
-static EventFilter sFilter;
 
 void hw_push_event(const SDL_Event& e)
 {
@@ -34,12 +32,9 @@ void hw_push_event(const SDL_Event& e)
 		fprintf(stderr, "hwhaiku event %#x key %d text '%.8s'\n", e.type,
 			e.type == SDL_KEYDOWN || e.type == SDL_KEYUP ? e.key.keysym.scancode : 0,
 			e.type == SDL_TEXTINPUT ? e.text.text : "");
-	SDL_Event copy = e;
-	if (sFilter && !sFilter(&copy))
-		return;
 	pthread_mutex_lock(&sQueueLock);
 	if (sQueue.size() < 4096)
-		sQueue.push_back(copy);
+		sQueue.push_back(e);
 	pthread_mutex_unlock(&sQueueLock);
 }
 
@@ -91,7 +86,6 @@ static Sint32 keycode_for(int sc)
 	return sc | kScancodeMask;
 }
 
-HW_API const char* SDL_GetScancodeName(int sc) { return scancode_name(sc); }
 HW_API Sint32 SDL_GetKeyFromScancode(int sc) { return keycode_for(sc); }
 
 HW_API const char* SDL_GetKeyName(Sint32 key)
@@ -152,7 +146,6 @@ static HWView* sView;
 static bool sRelative, sCursorVisible = true, sCursorHidden;
 static BPoint sMouse;
 static Uint32 sButtons;
-static int sRelX, sRelY;	// accumulated for SDL_GetRelativeMouseState
 
 static void window_event(int ev, int d1 = 0, int d2 = 0)
 {
@@ -221,8 +214,6 @@ public:
 			e.motion.yrel = (int)(where.y - sMouse.y);
 			sMouse = where;
 		}
-		sRelX += e.motion.xrel;
-		sRelY += e.motion.yrel;
 		hw_push_event(e);
 	}
 
@@ -397,7 +388,7 @@ bool hw_start_app()
 	sem_id ready = create_sem(0, "hw app ready");
 	sAppThread = spawn_thread(app_thread, "hw app", B_NORMAL_PRIORITY, (void*)(intptr_t)ready);
 	if (sAppThread < 0 || resume_thread(sAppThread) != B_OK) {
-		hw_set_error("can't start the application thread");
+		SDL_SetError("can't start the application thread");
 		return false;
 	}
 	acquire_sem(ready);
@@ -433,7 +424,7 @@ static int place(int v, int size, int screen)
 HW_API void* SDL_CreateWindow(const char* title, int x, int y, int w, int h, Uint32 flags)
 {
 	if (sWindow) {
-		hw_set_error("only one window is supported");
+		SDL_SetError("only one window is supported");
 		return NULL;
 	}
 	BRect screen = BScreen().Frame();
@@ -476,7 +467,6 @@ HW_API int SDL_DestroyWindow(void* win)
 	return 0;
 }
 
-HW_API void SDL_ShowWindow(void*) { if (sWindow && sWindow->Lock()) { if (sWindow->IsHidden()) sWindow->Show(); sWindow->Unlock(); } }
 HW_API void SDL_SetWindowIcon(void*, SDL_Surface*) {}	// Haiku shows the app's resource icon
 
 HW_API void SDL_SetWindowSize(void*, int w, int h)
@@ -517,8 +507,6 @@ HW_API void SDL_SetWindowFullscreen(void*, Uint32 flags)
 }
 
 HW_API const char* SDL_GetCurrentVideoDriver() { return "haiku"; }
-HW_API int SDL_GetNumVideoDisplays() { return 1; }
-HW_API void SDL_VideoQuit() {}
 
 // shortcut: the attributes are ignored; the view is always RGB, double-buffered
 HW_API int SDL_GL_SetAttribute(int, int) { return 0; }
@@ -527,7 +515,7 @@ HW_API int SDL_GL_SetSwapInterval(int) { return 0; }
 HW_API void* SDL_GL_CreateContext(void* win)
 {
 	if (!win || win != sWindow) {
-		hw_set_error("no window");
+		SDL_SetError("no window");
 		return NULL;
 	}
 	if (!sGLLocked) {
@@ -554,23 +542,6 @@ HW_API void SDL_GL_SwapWindow(void*)
 	sView->UnlockGL();
 	sView->LockGL();
 }
-HW_API void SDL_GL_SwapBuffers() { SDL_GL_SwapWindow(sWindow); }
-
-// SDL_Renderer is never used with an OpenGL window; these only exist to link
-HW_API void* SDL_CreateRenderer(void*, int, Uint32) { return NULL; }
-HW_API void* SDL_GetRenderer(void*) { return NULL; }
-HW_API int SDL_DestroyRenderer(void*) { return 0; }
-HW_API int SDL_SetRenderDrawColor(void*, Uint8, Uint8, Uint8, Uint8) { return -1; }
-HW_API int SDL_RenderFillRect(void*, const SDL_Rect*) { return -1; }
-HW_API int SDL_RenderClear(void*) { return -1; }
-HW_API void SDL_RenderPresent(void*) {}
-HW_API int SDL_RenderReadPixels(void*, const SDL_Rect*, Uint32, void*, int) { return -1; }
-HW_API int SDL_RenderSetViewport(void*, const SDL_Rect*) { return -1; }
-
-// SDL 1.2 leftovers referenced only from code paths for SDL1
-HW_API void SDL_WM_SetIcon(SDL_Surface*, Uint8) {}
-HW_API void SDL_WM_SetCaption(const char* title, const char*) { if (sWindow && sWindow->Lock()) { sWindow->SetTitle(title); sWindow->Unlock(); } }
-HW_API int SDL_WM_ToggleFullScreen(SDL_Surface*) { return 0; }
 
 // ── mouse ──
 HW_API int SDL_ShowCursor(int toggle)
@@ -603,26 +574,10 @@ HW_API void SDL_WarpMouseInWindow(void*, int x, int y)
 	}
 }
 
-HW_API Uint8 SDL_GetMouseState(int* x, int* y)
-{
-	if (x) *x = (int)sMouse.x;
-	if (y) *y = (int)sMouse.y;
-	return sButtons;
-}
-
-HW_API Uint8 SDL_GetRelativeMouseState(int* x, int* y)
-{
-	if (x) *x = sRelX;
-	if (y) *y = sRelY;
-	sRelX = sRelY = 0;
-	return sButtons;
-}
-
 // ── event API ──
 void hw_joystick_poll();	// joystick.cpp
 
 HW_API void SDL_PumpEvents() { hw_joystick_poll(); }
-HW_API void SDL_SetEventFilter(EventFilter f) { sFilter = f; }
 HW_API void SDL_StartTextInput() {}
 HW_API void SDL_StopTextInput() {}
 
@@ -650,19 +605,6 @@ HW_API int SDL_PeepEvents(SDL_Event* events, int n, int action, Uint32 minType, 
 	}
 	pthread_mutex_unlock(&sQueueLock);
 	return count;
-}
-
-HW_API int SDL_PollEvent(SDL_Event* e)
-{
-	SDL_PumpEvents();
-	return SDL_PeepEvents(e, 1, e ? 2 : 1, 0, 0xFFFFFFFF) > 0;
-}
-
-HW_API int SDL_WaitEvent(SDL_Event* e)
-{
-	while (!SDL_PollEvent(e))
-		snooze(5000);
-	return 1;
 }
 
 HW_API void SDL_FlushEvent(Uint32 type)

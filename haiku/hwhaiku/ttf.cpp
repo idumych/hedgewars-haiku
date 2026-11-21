@@ -74,7 +74,7 @@ HW_API TTF_Font* TTF_OpenFontRW(SDL_RWops* rw, int freesrc, int ptsize)
 	const BFont* loaded = load_font(data, size);
 	free(data);
 	if (!loaded) {
-		hw_set_error("can't load font");
+		SDL_SetError("can't load font");
 		return NULL;
 	}
 	TTF_Font* f = new TTF_Font;
@@ -98,7 +98,7 @@ HW_API int TTF_SizeUTF8(TTF_Font* f, const char* text, int* w, int* h)
 	if (!f || !text) {	// the engine measures with no fonts in --stats-only
 		if (w) *w = 0;
 		if (h) *h = 0;
-		hw_set_error("no font");
+		SDL_SetError("no font");
 		return -1;
 	}
 	if (w)
@@ -136,9 +136,7 @@ static Uint8* coverage(TTF_Font* f, const char* text, int* w, int* h)
 	return cov;
 }
 
-enum { kBlended, kSolid, kShaded };
-
-static SDL_Surface* render(TTF_Font* f, const char* text, SDL_Color fg, SDL_Color bg, int mode)
+HW_API SDL_Surface* TTF_RenderUTF8_Blended(TTF_Font* f, const char* text, SDL_Color fg)
 {
 	if (!f || !text)
 		return NULL;
@@ -147,25 +145,11 @@ static SDL_Surface* render(TTF_Font* f, const char* text, SDL_Color fg, SDL_Colo
 	SDL_Surface* s = hw_create_rgba(w, h);
 	for (int i = 0; s && i < w * h; i++) {
 		Uint8* p = (Uint8*)s->pixels + (size_t)(i / w) * s->pitch + (i % w) * 4;
-		int c = cov[i];
-		if (mode == kSolid)
-			c = c >= 128 ? 255 : 0;
-		if (mode == kShaded) {
-			p[0] = (fg.r * c + bg.r * (255 - c)) / 255;
-			p[1] = (fg.g * c + bg.g * (255 - c)) / 255;
-			p[2] = (fg.b * c + bg.b * (255 - c)) / 255;
-			p[3] = 255;
-		} else {
-			p[0] = fg.r;
-			p[1] = fg.g;
-			p[2] = fg.b;
-			p[3] = c * (fg.a ? fg.a : 255) / 255;
-		}
+		p[0] = fg.r;
+		p[1] = fg.g;
+		p[2] = fg.b;
+		p[3] = cov[i] * (fg.a ? fg.a : 255) / 255;
 	}
 	free(cov);
 	return s;
 }
-
-HW_API SDL_Surface* TTF_RenderUTF8_Blended(TTF_Font* f, const char* t, SDL_Color fg) { return render(f, t, fg, fg, kBlended); }
-HW_API SDL_Surface* TTF_RenderUTF8_Solid(TTF_Font* f, const char* t, SDL_Color fg) { return render(f, t, fg, fg, kSolid); }
-HW_API SDL_Surface* TTF_RenderUTF8_Shaded(TTF_Font* f, const char* t, SDL_Color fg, SDL_Color bg) { return render(f, t, fg, bg, kShaded); }

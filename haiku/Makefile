@@ -69,7 +69,22 @@ $(APP)/Hedgewars: $(wildcard haiku/launcher/*.cpp haiku/launcher/*.h) haiku/laun
 	xres -o $@ $(OBJ)/Hedgewars.rsrc
 	mimeset -f $@
 
+# host test of the surface code; runs anywhere with a C++ compiler
+ifneq ($(shell uname -s),Haiku)
+TEST_FLAGS := -fsanitize=address,undefined	# not available on Haiku
+endif
+test:
+	@mkdir -p $(OBJ)
+	$(CXX) -std=c++17 -Wall -g $(TEST_FLAGS) -Ihaiku/hwhaiku \
+		-o $(OBJ)/surface_test haiku/tests/surface_test.cpp haiku/hwhaiku/surface.cpp
+	$(OBJ)/surface_test
+ifeq ($(shell uname -s),Haiku)
+	$(CXX) -std=c++17 -Wall -Ihaiku/launcher -o $(OBJ)/progress_test haiku/tests/progress_test.cpp \
+		haiku/launcher/Game.cpp -lbe -lnetwork
+	$(OBJ)/progress_test
+endif
+
 clean:
 	rm -rf $(B)
 
-.PHONY: all clean
+.PHONY: all test clean

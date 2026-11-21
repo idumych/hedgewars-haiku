@@ -39,7 +39,7 @@ HW_API SDL_PixelFormat* SDL_AllocFormat(Uint32 fmt)
 {
 	Uint32 r, g, b, a;
 	if (((fmt >> 8) & 0xFF) != 32 || !masks_for_order((fmt >> 20) & 0xF, &r, &g, &b, &a)) {
-		hw_set_error("unsupported pixel format %x", fmt);
+		SDL_SetError("unsupported pixel format %x", fmt);
 		return NULL;
 	}
 	return make_format(fmt, r, g, b, a);
@@ -47,16 +47,9 @@ HW_API SDL_PixelFormat* SDL_AllocFormat(Uint32 fmt)
 
 HW_API void SDL_FreeFormat(SDL_PixelFormat* f) { free(f); }
 
-HW_API int SDL_PixelFormatEnumToMasks(Uint32 fmt, int* bpp, Uint32* r, Uint32* g, Uint32* b, Uint32* a)
-{
-	*bpp = 32;
-	return masks_for_order((fmt >> 20) & 0xF, r, g, b, a);
-}
-
-static SDL_Surface* wrap(void* pixels, int w, int h, int pitch, Uint32 r, Uint32 g, Uint32 b, Uint32 a, Uint32 flags)
+static SDL_Surface* wrap(void* pixels, int w, int h, int pitch, Uint32 r, Uint32 g, Uint32 b, Uint32 a)
 {
 	SDL_Surface* s = (SDL_Surface*)calloc(1, sizeof(SDL_Surface));
-	s->flags = flags;
 	s->format = make_format(r == 0xFF && a == 0xFF000000 ? kPixelFormatABGR8888 : 0, r, g, b, a);
 	s->w = w;
 	s->h = h;
@@ -70,21 +63,12 @@ static SDL_Surface* wrap(void* pixels, int w, int h, int pitch, Uint32 r, Uint32
 HW_API SDL_Surface* SDL_CreateRGBSurface(Uint32, int w, int h, int depth, Uint32 r, Uint32 g, Uint32 b, Uint32 a)
 {
 	if (depth != 32) {
-		hw_set_error("only 32-bit surfaces are supported");
+		SDL_SetError("only 32-bit surfaces are supported");
 		return NULL;
 	}
 	if (!r && !g && !b) { r = 0xFF; g = 0xFF00; b = 0xFF0000; }
 	void* px = calloc((size_t)w * h, 4);
-	return px ? wrap(px, w, h, w * 4, r, g, b, a, 0) : NULL;
-}
-
-HW_API SDL_Surface* SDL_CreateRGBSurfaceFrom(void* px, int w, int h, int depth, int pitch, Uint32 r, Uint32 g, Uint32 b, Uint32 a)
-{
-	if (depth != 32) {
-		hw_set_error("only 32-bit surfaces are supported");
-		return NULL;
-	}
-	return wrap(px, w, h, pitch, r, g, b, a, 1);	// SDL_PREALLOC: pixels aren't ours
+	return px ? wrap(px, w, h, w * 4, r, g, b, a) : NULL;
 }
 
 SDL_Surface* hw_create_rgba(int w, int h)
@@ -96,8 +80,7 @@ HW_API void SDL_FreeSurface(SDL_Surface* s)
 {
 	if (!s || --s->refcount > 0)
 		return;
-	if (!(s->flags & 1))
-		free(s->pixels);
+	free(s->pixels);
 	free(s->format);
 	free(s);
 }
@@ -114,9 +97,6 @@ HW_API int SDL_SetColorKey(SDL_Surface* s, Uint32 flag, Uint32 key)
 	s->map = flag ? (void*)(uintptr_t)(key | (1ull << 32)) : NULL;
 	return 0;
 }
-
-// SDL1 leftover: the engine only calls it to turn per-surface alpha off
-HW_API int SDL_SetAlpha(SDL_Surface*, Uint32, Uint32) { return 0; }
 
 static inline void unpack(const SDL_PixelFormat* f, Uint32 p, Uint8* r, Uint8* g, Uint8* b, Uint8* a)
 {
@@ -135,7 +115,6 @@ static inline Uint32 pack(const SDL_PixelFormat* f, Uint8 r, Uint8 g, Uint8 b, U
 HW_API Uint32 SDL_MapRGB(const SDL_PixelFormat* f, Uint8 r, Uint8 g, Uint8 b) { return pack(f, r, g, b, 255); }
 HW_API Uint32 SDL_MapRGBA(const SDL_PixelFormat* f, Uint8 r, Uint8 g, Uint8 b, Uint8 a) { return pack(f, r, g, b, a); }
 HW_API void SDL_GetRGB(Uint32 p, const SDL_PixelFormat* f, Uint8* r, Uint8* g, Uint8* b) { Uint8 a; unpack(f, p, r, g, b, &a); }
-HW_API void SDL_GetRGBA(Uint32 p, const SDL_PixelFormat* f, Uint8* r, Uint8* g, Uint8* b, Uint8* a) { unpack(f, p, r, g, b, a); }
 
 HW_API SDL_Surface* SDL_ConvertSurface(SDL_Surface* src, const SDL_PixelFormat* fmt, Uint32)
 {
@@ -157,15 +136,6 @@ HW_API SDL_Surface* SDL_ConvertSurface(SDL_Surface* src, const SDL_PixelFormat* 
 	}
 	return dst;
 }
-
-HW_API SDL_Surface* SDL_DisplayFormat(SDL_Surface* s)
-{
-	SDL_PixelFormat* f = SDL_AllocFormat(kPixelFormatABGR8888);
-	SDL_Surface* d = SDL_ConvertSurface(s, f, 0);
-	SDL_FreeFormat(f);
-	return d;
-}
-HW_API SDL_Surface* SDL_DisplayFormatAlpha(SDL_Surface* s) { return SDL_DisplayFormat(s); }
 
 // clip r against the surface's clip rect; false when nothing is left
 static bool clip(SDL_Surface* s, SDL_Rect* r)
@@ -242,37 +212,4 @@ HW_API int SDL_UpperBlit(SDL_Surface* src, const SDL_Rect* srcrect, SDL_Surface*
 	if (dstrect)
 		*dstrect = dc;
 	return 0;
-}
-
-HW_API void SDL_UpdateRect(SDL_Surface*, int, int, Uint32, Uint32) {}
-HW_API int SDL_Flip(SDL_Surface*) { return 0; }
-
-static void put32(Uint8* p, Uint32 v) { memcpy(p, &v, 4); }	// x86: little-endian
-
-HW_API int SDL_SaveBMP_RW(SDL_Surface* s, SDL_RWops* dst, int freedst)
-{
-	Uint32 imageSize = (Uint32)s->w * s->h * 4;
-	Uint8 hdr[54] = {'B', 'M'};
-	put32(hdr + 2, 54 + imageSize);
-	put32(hdr + 10, 54);
-	put32(hdr + 14, 40);
-	put32(hdr + 18, s->w);
-	put32(hdr + 22, (Uint32)-s->h);	// negative height: rows top to bottom
-	hdr[26] = 1;
-	hdr[28] = 32;
-	put32(hdr + 34, imageSize);
-	bool ok = dst->write(dst, hdr, 54, 1) == 1;
-	Uint32* line = (Uint32*)malloc(s->w * 4);
-	for (int y = 0; ok && y < s->h; y++) {
-		for (int x = 0; x < s->w; x++) {
-			Uint8 r, g, b, a;
-			unpack(s->format, row(s, y)[x], &r, &g, &b, &a);
-			line[x] = b | (g << 8) | (r << 16) | ((Uint32)a << 24);
-		}
-		ok = dst->write(dst, line, s->w * 4, 1) == 1;
-	}
-	free(line);
-	if (freedst)
-		dst->close(dst);
-	return ok ? 0 : -1;
 }

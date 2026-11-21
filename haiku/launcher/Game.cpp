@@ -177,18 +177,31 @@ std::string get_progress(const std::string& key)
 	return "";
 }
 
+bool save_message(const BMessage& m, const BPath& path)
+{
+	BPath tmp(path);
+	tmp.GetParent(&tmp);
+	tmp.Append((std::string(path.Leaf()) + ".tmp").c_str());
+	BFile f(tmp.Path(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+	if (f.InitCheck() != B_OK || m.Flatten(&f) != B_OK || f.Sync() != B_OK)
+		return false;
+	return BEntry(tmp.Path()).Rename(path.Leaf(), true) == B_OK;
+}
+
 void set_progress(const std::string& key, const std::string& value)
 {
 	BAutolock l(sProgressLock);
 	BMessage m;
-	{
-		BFile f(progress_path().Path(), B_READ_ONLY);
-		m.Unflatten(&f);
+	BFile f(progress_path().Path(), B_READ_ONLY);
+	// a file that's there but unreadable is kept as it is, not replaced by one key
+	off_t size = 0;
+	if (f.InitCheck() == B_OK && f.GetSize(&size) == B_OK && size > 0 && m.Unflatten(&f) != B_OK) {
+		fprintf(stderr, "Hedgewars: can't read %s; not saving %s\n", progress_path().Path(), key.c_str());
+		return;
 	}
 	m.RemoveName(key.c_str());
 	m.AddString(key.c_str(), value.c_str());
-	BFile f(progress_path().Path(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
-	m.Flatten(&f);
+	save_message(m, progress_path());
 }
 
 // ── one game ──
