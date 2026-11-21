@@ -104,6 +104,7 @@ VideosView::VideosView() : BGroupView("Videos", B_VERTICAL)
 	fText->SetWordWrap(true);
 	fText->SetExplicitMinSize(BSize(200, 60));
 	fPicture = new VideoPicture;
+	fPicture->SetExplicitAlignment(BAlignment(B_ALIGN_HORIZONTAL_CENTER, B_ALIGN_TOP));
 	BStringView* hint = new BStringView("hint", "Press R during a game to start and stop recording a video.");
 	hint->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
 	fPlay = new BButton("Play", new BMessage(kMsgVideoPlay));
@@ -124,9 +125,8 @@ VideosView::VideosView() : BGroupView("Videos", B_VERTICAL)
 		.AddGroup(B_HORIZONTAL)
 			.Add(ls, 2)
 			.AddGroup(B_VERTICAL, B_USE_SMALL_SPACING, 1)
-				.Add(fPicture)
-				.Add(fText)
-				.AddGlue()
+				.Add(fPicture, 0)
+				.Add(new BScrollView("description scroll", fText, 0, false, false), 1)	// fills the space below
 			.End()
 		.End()
 		.AddGroup(B_HORIZONTAL)
