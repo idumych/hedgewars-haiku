@@ -1,3 +1,10 @@
+> **This fork is the native Haiku port of Hedgewars**: the game running on
+> Haiku and Renku OS without SDL or Qt, with a native launcher. See
+> **[haiku/README.md](haiku/README.md)** for what it does, how to build and
+> install it, and what was tested. Everything below is upstream's README.
+
+![Hedgewars on Haiku](haiku/screenshots/game.png)
+
 Hedgewars - a turn-based strategy game
 ======================================
 [![Build Status](https://travis-ci.org/hedgewars/hw.svg)](https://travis-ci.org/hedgewars/hw)

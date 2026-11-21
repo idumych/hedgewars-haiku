@@ -1,8 +1,97 @@
-# Hedgewars for Haiku, without SDL
+# Hedgewars for Haiku
 
-The engine runs on the Haiku API directly. `libhwhaiku` implements the
-SDL2, SDL_ttf, SDL_mixer, SDL_image and SDL_net entry points that
-`hedgewars/SDLh.pas` and `misc/libphyslayer` import:
+[Hedgewars](https://hedgewars.org), the turn-based artillery game with
+hedgehogs, running natively on [Haiku](https://www.haiku-os.org) and Renku
+OS: no SDL, no Qt. The engine talks to the Haiku API directly, and a native
+launcher replaces the Qt frontend.
+
+![A match](screenshots/game.png)
+
+| | |
+|---|---|
+| ![Match tab](screenshots/match.png) | ![Network room](screenshots/network-room.png) |
+| ![Videos tab](screenshots/videos.png) | ![Scheme editor](screenshots/scheme-editor.png) |
+
+This is an unofficial port, kept in a fork of
+[hedgewars/hw](https://github.com/hedgewars/hw) on the `haiku` branch. It
+was made with the help of an AI coding assistant (Claude); every feature
+below was checked by playing it in Haiku virtual machines, and the
+[Status](#status) table says exactly how.
+
+## What you can do
+
+- **Play a match** against the computer (five levels), a second player on
+  the same computer, or one of your other saved teams. Choose the scheme,
+  weapon set, game style, map (generated, hand-drawn or one of the game's
+  maps), theme, and for generated maps the map size, maze style, feature size
+  and seed.
+- **Training, challenges, scenarios and campaigns**, with their pictures and
+  descriptions; won missions are marked, campaigns unlock as you go.
+- **Statistics** after a game: winner, ranking, awards and health graph.
+- **Saved games and demos**: an interrupted game is kept and resumes where
+  it stopped; a finished one is kept as a demo.
+- **Videos**: press R in a game to start and stop recording. After the game
+  the recorded stretch is rendered to MP4, WebM or Ogg at 24, 30 or 60
+  frames per second, and Play opens it in MediaPlayer.
+- **Teams**: as many as you like, each with name, player (human or computer
+  level), flag, grave, fort, voice, hedgehog names and hats, and its own keys.
+- **Your own schemes and weapon sets**, made in editor windows.
+- **Hand-drawn maps**: draw with pencil, rectangle, ellipse and eraser;
+  open and save the Qt frontend's `.hwmap` files.
+- **Settings…** (Alt+,): language, window size, full screen, quality, frame
+  rate display, damage display, sound, music, volume and key bindings.
+- **Network game** (Hedgewars menu): connect to a Hedgewars server, chat in
+  the lobby, create, join, follow or watch rooms, add your team, and play.
+  The room's host sets the style, scheme, weapons, map (hand-drawn too),
+  theme and each team's hedgehogs and colour, can lock the room with a
+  password, rename it, restrict it, kick players or hand over hosting.
+  Server admins get kick, ban and an administration window.
+- **Downloadable content** (Hedgewars menu): add-ons from hedgewars.org.
+  Their maps, themes, styles, hats and so on appear in the launcher's menus.
+
+Settings, teams, recordings, videos, mission progress and add-ons live in
+`~/config/settings/Hedgewars`, in the Qt frontend's file formats where it
+has one (teams, schemes, weapon sets, `settings.ini`, drawn maps).
+
+## Install
+
+There's no release package yet. Build it (below), then:
+
+    pkgman install haiku/build/hedgewars-1.1.0~dev-1-x86_64.hpkg
+
+Hedgewars appears in Deskbar's Applications menu, and `hedgewars` starts it
+from Terminal. The package needs Haiku R1/beta6 or Renku OS on x86_64, and
+the system's ffmpeg 6, curl, OpenSSL and Mesa packages (installed by default
+on both). Installing a package of the same version over an installed one
+fails with "Name in use": uninstall the old one first.
+
+## Build
+
+On Haiku R1/beta6 (x86_64), from the top of the tree:
+
+    pkgman install llvm19_clang mesa_devel glu_devel ffmpeg6_devel rust_bin curl_devel openssl3_devel
+    make -f haiku/Makefile                 # haiku/build/Hedgewars/
+    make -f haiku/Makefile test            # the tests
+    sh haiku/package/build-hpkg.sh         # haiku/build/hedgewars-*.hpkg
+
+`haiku/build/Hedgewars/Hedgewars` runs from the build folder too.
+
+- `make -f haiku/Makefile test` builds and runs the tests of the code that
+  needs no Haiku (surface blits, statistics, server protocol, add-on list
+  and packages, INI files, drawn maps, scheme files; these also run on
+  Linux) and, on Haiku, the launcher's progress file.
+- `make -f haiku/Makefile compare` builds the Pascal engine with Free Pascal
+  and checks that the C engine plays exactly like it (see below).
+- `launcher/schemes.h` is generated from the Qt frontend's scheme list:
+  `python3 haiku/tools/gen-schemes.py > haiku/launcher/schemes.h`.
+- `HWHAIKU_DEBUG=1` makes the engine print every input event it receives;
+  `HEDGEWARS_LOG_CONFIG=1` makes the launcher print the game setup it sends.
+
+## How it works
+
+**The engine.** `libhwhaiku` implements the parts of SDL2, SDL_ttf,
+SDL_mixer, SDL_image and SDL_net that the engine (`hedgewars/SDLh.pas`) and
+`misc/libphyslayer` call, on the Haiku API:
 
 | Part | Haiku API |
 |---|---|
@@ -12,171 +101,111 @@ SDL2, SDL_ttf, SDL_mixer, SDL_image and SDL_net entry points that
 | Sound and music | `BMediaFile` decoding, mixed in a `BSoundPlayer` |
 | Joysticks | `BJoystick` |
 | Link to the launcher | POSIX sockets |
-| Video encoding | upstream's `avwrapper` on the system's ffmpeg 6 (the libraries Haiku's media plugin uses) |
+| Video encoding | upstream's `avwrapper` on the system's ffmpeg 6 |
 
-The engine is compiled from C: upstream's pas2c converts `hedgewars/*.pas`
-to `engine-c/` (with `tools/gen-engine-c.sh`, on a system with GHC), and
-clang compiles it with upstream's small stand-in for Free Pascal's runtime
-(`project_files/hwc/rtl`). The Pascal stays the source; the C is regenerated
-from it and committed, so building on Haiku needs neither GHC nor Free Pascal.
-The C engine plays exactly like the Pascal one: `make compare` runs upstream's
-Lua tests on both and fails on any difference in their output. Four small
-changes let pas2c handle this engine version: `uConsts`' initialization
-section becomes a procedure under `PAS2C`, `Int8`/`PtrUInt` are added to
-pas2c's types, and pas2c imports `Control.Monad` (needed with newer GHC).
-For video recording, two fixes to pas2c's runtime (`fileio.c`): `fileSize`
-seeked to the end and stayed there, and `eof` was true only after a failed
-read; and `avwrapper.c` converts the game's sound to the sample format and
-rate the encoder takes (AAC, Opus), and uses a named channel layout.
-Haiku's Media Kit was tried first for encoding: on R1/beta6 its writer
-fails on every audio track (AAC and AC-3 don't open, FLAC and PCM writes
-fail), so the engine uses ffmpeg directly.
+The engine is compiled from C. Upstream's pas2c converts `hedgewars/*.pas`
+into `haiku/engine-c/` (`haiku/tools/gen-engine-c.sh`, run on a system with
+GHC), and clang compiles it with upstream's stand-in for Free Pascal's
+runtime (`project_files/hwc/rtl`). The Pascal stays the source; the C is
+regenerated from it and committed, so building on Haiku needs neither GHC
+nor Free Pascal. The C engine plays exactly like the Pascal one, which
+matters because network games must not go out of sync: `make compare`
+runs upstream's Lua tests on both and fails on any difference.
 
-A native launcher (`launcher/`) replaces the Qt
-frontend's local pages, in tabs:
+Changes to upstream code, all small:
+- pas2c: `uConsts`' initialization section becomes a procedure under
+  `PAS2C`; `Int8` and `PtrUInt` added to its types; `Control.Monad`
+  imported (newer GHC).
+- pas2c's runtime (`fileio.c`): `fileSize` left the file at its end, and
+  `eof` was only true after a failed read; both broke video recording.
+- `avwrapper.c`: converts the game's sound to the sample format and rate
+  the encoder takes (AAC, Vorbis), and uses a named channel layout.
 
-- **Match**: opponent (the computer at five levels, a second player, or
-  one of your other saved teams, with its own hedgehogs, hats, flag and keys),
-  hedgehogs per team, scheme and weapon set (the predefined ones and your
-  own, each with an editor window), game styles, generated, hand-drawn or
-  fixed maps, theme, and for generated maps the map size, maze style,
-  feature size and seed
-- **Missions**: training, challenges and scenarios, with their pictures and
-  descriptions; won missions are marked
-- **Campaigns**: the missions your progress has unlocked
-- **Statistics** after a finished game or demo: winner, ranking, awards,
-  health graph
-- **Recordings**: interrupted games are kept as saved games and finished
-  ones as demos, the way the Qt frontend records them; play them again or
-  move them to the Trash
-- **Videos**: press R in a game to start and stop recording; after the game a
-  second engine replays the recorded stretch off screen and encodes it to
-  `Videos/` at 1280×720, as MP4 (MPEG-4, AAC), WebM (VP8, Vorbis) or Ogg
-  (Theora, Vorbis), at 24, 30 or 60 frames/s. The list shows each video's
-  picture and map; Play opens it in MediaPlayer
-- **Team**: several teams, each with name, player (human or computer
-  level), flag, grave, fort, voice, hedgehog names and hats, and its own
-  keys; kept as `Teams/<name>.hwt`, the Qt frontend's files
+Haiku's Media Kit was tried first for video: on R1/beta6 its writer fails on
+every audio track, so the engine uses ffmpeg, which Haiku's own media plugin
+also uses.
 
-and, from the Hedgewars menu, two windows:
+**The launcher** (`haiku/launcher/`) is a native Haiku application. It runs
+the engine and talks to it over a local socket, the way the Qt frontend
+does. Code that doesn't need Haiku (file formats, the server protocol, the
+add-on package reader) is kept apart and tested on any system.
 
-- **Network game**: connect to a Hedgewars server (nickname, and the password
-  of a registered nickname or a locked room when asked), the lobby's rooms,
-  players and chat, then a room: add or remove your team, chat, ready, and
-  for the room's host the game style, scheme, weapons, map, theme, each
-  team's hedgehogs and colour, and Start game. Rooms can have a password;
-  the **Room** menu renames the room, restricts joins, team additions or
-  unregistered players, kicks a player or makes them host (also on a right
-  click in the player list). For server admins, the **Server** menu kicks
-  or bans a lobby player and opens **Administration…**: the server's
-  messages for new and old versions, the latest protocol number, the
-  accounts cache and the ban list (add by address or nickname, remove). The engine plays the room's game and relays its moves
-  through the server; the statistics follow, as after a local game.
-  Implemented of the protocol (`launcher/NetProto.cpp`, `Net.cpp`):
-  NICK, PROTO, CONNECTED, PING/PONG, ERROR, WARNING, BYE, NOTICE (nickname
-  taken, room password), ASKPASSWORD/PASSWORD/SERVER_AUTH, LOBBY:JOINED/LEFT,
-  ROOMS, ROOM ADD/UPD/DEL, SERVER_MESSAGE, CHAT, INFO, CLIENT_FLAGS (ready,
-  host, playing), CREATE_ROOM, JOIN_ROOM, JOINING, JOINED, LEFT, PART,
-  KICKED, ROOMABANDONED, ADD_TEAM, TEAM_ACCEPTED, REMOVE_TEAM, TEAM_COLOR,
-  HH_NUM, ROOM_NAME, TOGGLE_RESTRICT_JOINS, TOGGLE_RESTRICT_TEAMS,
-  TOGGLE_REGISTERED_ONLY, KICK, DELEGATE, BAN, BANIP, BANNICK, BANLIST, UNBAN,
-  GET_SERVER_VAR/SERVER_VARS, SET_SERVER_VAR, CLEAR_ACCOUNTS_CACHE, CFG (all of FULLMAPCONFIG, MAP, MAPGEN, MAZE_SIZE, SEED, TEMPLATE,
-  FEATURE_SIZE, THEME, SCRIPT, SCHEME, AMMO), TOGGLE_READY, START_GAME,
-  RUN_GAME, EM, ROUND_FINISHED, ROUNDFINISHED, QUIT, FOLLOW (right-click a
-  player in the lobby), joining a room whose game is running (the engine
-  plays the game so far and watches), TEAMCHAT (`/team` in the game), and
-  hand-drawn maps (DRAWNMAP; the host picks Hand-drawn and Edit drawing…).
-  The host's scheme and weapon menus also list your own schemes and weapon
-  sets. Not implemented: INFO requests, the official server's recorded games
-  (REPLAY_START), REDIRECT, TLS, the MOTD preview and filters of the room list.
-- **Downloadable content**: the add-ons listed on hedgewars.org (with
-  libcurl), downloaded into `~/config/settings/Hedgewars/Data`, where the
-  engine mounts them. The launcher's menus (maps, themes, styles, hats,
-  flags, graves, forts, voices, missions) list what add-on packages (`.hwp`,
-  read as zips by `launcher/DataFS.cpp`) and loose files in that folder
-  bring, as the engine sees them; a package downloaded while the launcher
-  runs shows up after a restart.
+<details>
+<summary>Network protocol: what's implemented</summary>
 
-**Settings…** (Alt+,) sets the language, window size, full screen,
-quality, weapon descriptions, frame rate, damage display, sound, music,
-volume and the keys (press a key or mouse button to bind it). They're kept
-in `settings.ini` with the Qt frontend's keys; the engine reads the key
-bindings from there and from the team files itself. **Edit drawing…**
-draws a hand-drawn map (pencil, rectangle, ellipse, eraser, line width,
-undo, clear; opens and saves the Qt frontend's `.hwmap` files).
+NICK, PROTO, CONNECTED, PING/PONG, ERROR, WARNING, BYE, NOTICE (nickname
+taken, room password), ASKPASSWORD/PASSWORD/SERVER_AUTH, LOBBY:JOINED/LEFT,
+ROOMS, ROOM ADD/UPD/DEL, SERVER_MESSAGE, CHAT, INFO, CLIENT_FLAGS,
+CREATE_ROOM (with password), JOIN_ROOM, JOINING, JOINED, LEFT, PART, KICKED,
+ROOMABANDONED, ADD_TEAM, TEAM_ACCEPTED, REMOVE_TEAM, TEAM_COLOR, HH_NUM,
+ROOM_NAME, TOGGLE_RESTRICT_JOINS, TOGGLE_RESTRICT_TEAMS,
+TOGGLE_REGISTERED_ONLY, KICK, DELEGATE, BAN, BANIP, BANNICK, BANLIST, UNBAN,
+GET_SERVER_VAR/SERVER_VARS, SET_SERVER_VAR, CLEAR_ACCOUNTS_CACHE, CFG (all of
+FULLMAPCONFIG: MAP, MAPGEN, MAZE_SIZE, SEED, TEMPLATE, FEATURE_SIZE, THEME,
+SCRIPT, SCHEME, AMMO, DRAWNMAP), TOGGLE_READY, START_GAME, RUN_GAME, EM,
+ROUND_FINISHED, ROUNDFINISHED, FOLLOW, TEAMCHAT, QUIT; joining a room whose
+game is running (the engine replays the game so far and watches).
 
-Settings, teams, recordings and mission progress live in
-`~/config/settings/Hedgewars`; your schemes and weapon sets in its
-`Schemes/Game/*.hwg` and `Schemes/Ammo/*.hwa`, the Qt frontend's files.
-
-## Build
-
-On Haiku R1/beta6 (x86_64), from the top of the tree (the package also runs on Renku OS):
-
-    pkgman install llvm19_clang mesa_devel glu_devel ffmpeg6_devel rust_bin curl_devel openssl3_devel
-    make -f haiku/Makefile                 # haiku/build/Hedgewars/
-    make -f haiku/Makefile compare         # C engine against Pascal (needs fpc)
-    sh haiku/package/build-hpkg.sh         # haiku/build/hedgewars-*.hpkg
-
-`launcher/schemes.h` is generated from the Qt frontend's scheme list:
-`python3 haiku/tools/gen-schemes.py > haiku/launcher/schemes.h`.
-
-`make -f haiku/Makefile test` runs the tests: the surface (blit and clipping),
-statistics, server protocol, add-on list, add-on package, INI file, drawn map and scheme file code on any system,
-and on Haiku also the launcher's progress file.
-
-`HWHAIKU_DEBUG=1` makes the engine print every input event it receives.
+Not implemented: INFO requests, the official server's recorded games
+(REPLAY_START), REDIRECT, TLS, the lobby message preview and room list
+filters.
+</details>
 
 ## Status
 
+Tested in QEMU virtual machines: Haiku R1/beta6 x86_64 and Renku OS x86_64,
+software OpenGL (llvmpipe). Network play was tested only against the repo's
+own server (`rust/hedgewars-server`) running locally, never the public one.
+
 | | State |
 |---|---|
-| Engine, physics, AI, Lua, map generation | works, built from C (pas2c); upstream Lua tests 6 of 7 pass, the same as the Pascal engine, with identical output |
-| Rendering (llvmpipe in a VM) | works |
-| Keyboard and mouse | works; keys arrive as SDL scancodes |
-| Sound effects, voices, music | works (checked from the VM's captured audio) |
-| Local game: you against the computer, or two players on one computer | works, from the launcher; checked with Default and Pro Mode, random and fixed (Bath) maps; a saved team as the second player brought its name, hogs, hat, flag and own keys (D walked its hedgehog right) |
-| Training missions | works (Basic Movement: the hedgehog walks, the mission advances) |
-| Saved games and demos | works: quitting a game keeps it and playing it resumes where it stopped; a finished game is kept as a demo and plays back to its end |
-| Statistics after a game | works (winner, ranking, awards, health graph; pictures from the Qt frontend) |
-| Campaigns, challenges, scenarios, styles | listed and set up like the Qt frontend; not each one played through |
-| `.hpkg` | installs and plays (system-wide on Haiku R1/beta6, started from the Deskbar): app in `apps/Hedgewars`, data in `data/hedgewars`, Deskbar entry, `bin/hedgewars`; a match, a recorded video, Settings and a network room checked from the installed copy |
-| Renku OS (x86_64, build00073, installed to disk in QEMU) | the same `.hpkg`, installed in the home folder; Renku's own packages cover its requirements (ffmpeg6, curl, openssl3, mesa): started from the Deskbar, a match, a recorded video (MP4) |
+| Engine, physics, AI, Lua, map generation | works; upstream's Lua tests: 6 of 7 pass, as with the Pascal engine, with identical output |
+| Rendering, keyboard and mouse, sound and music | works (sound checked from the VM's captured audio) |
+| Local matches | works: against the computer, a second player, or a saved team with its own hats, flag and keys; generated (island, maze, cave, forts, WFC), hand-drawn and fixed maps played |
+| Training, challenges, scenarios, campaigns | listed and started like the Qt frontend; Basic Movement played; not each one played through |
+| Saved games, demos, statistics | works |
+| Video recording | works: MP4 and WebM clips made from matches play in MediaPlayer with sound; size (1280×720) and bit rate are fixed. Very slow on Renku in a VM (software OpenGL) |
+| Settings, key bindings, teams | works: window size, frame rate display and German texts checked; a rebound key and a team's own key worked in a game |
+| Scheme and weapon set editors | works: a 20-second turn time and a changed bazooka count reached the engine |
+| Network play | works: full games between Haiku and Renku in sync to the end (the same statistics on both); lobby, room and team chat, passwords, room flags, follow, watching a running game (only checked at its start), drawn maps, your own schemes in rooms, the admin commands |
+| Downloadable content and add-ons | works: the list loads from hedgewars.org; a downloaded theme and a test package's map, hat and flag showed in the menus and were played |
+| Large fonts | checked at 15 pt: no clipping in any window |
+| Package | builds and passes the artifact checks; installed system-wide on Haiku R1/beta6 and in the home folder on Renku (build00073), started from Deskbar: a match, a recorded video, Settings and a network room |
 | Joysticks | written, not tested (no joystick in the VM) |
-| Settings window | works: window size 800 × 600 and the frame rate showed in the game; German mission names in the launcher and `--locale de.txt` to the engine; quality, volume, damage display and tooltips are passed as the Qt frontend passes them, not each checked by eye |
-| Key bindings | works: Walk left set to A in Settings walks with A and not with Left; a team's own key (J) works on its turn while the other team keeps A |
-| Teams | works: several teams in `Teams/*.hwt`, the old launcher's team carried over; the Qt frontend's achievements in a team file are kept, not used |
-| Hand-drawn maps | works: drawn with pencil, rectangle and eraser, saved as `.hwmap`, played as a match on that land; opening a `.hwmap` from the Qt frontend is checked by the host test (decodes and encodes back to the same bytes) |
-| Video recording | works: a clip recorded with R in a match became an mp4 that MediaPlayer plays with sound; WebM at 24 frames/s checked the same way; size and bit rate are fixed |
-| Network play | works: a net game between Haiku R1/beta6 and Renku (two QEMU machines) through the repo's `hedgewars-server` on the host: lobby, room, teams, hedgehog count, chat in the lobby, the room and the game, the game in sync to its end (the same statistics on both) and a demo kept on each; the room password and taken-nickname prompts checked; the registered-nickname password exchange is written, not tested (the local server has no accounts) |
-| Net play: watching, follow, drawn maps, team chat | works, checked through the local server: FOLLOW from the lobby's player menu (on both machines); joining a room whose game runs started the engine as a spectator on that game (a Python client's hand-drawn map, Desert theme, on R1/beta6); a net game on the host's hand-drawn map showed the same land on R1/beta6 and Renku; the host's own scheme (Quick turns, 20 s turns) and weapon set reached Renku and its engine; `/team` in the game reached the clan mate (a Python client) and its TEAMCHAT showed as `[Clan]` in the game. Not checked: resending a drawing edited while the room is open, watching a game with many turns already played (the moves are piped to the engine before it starts; a very long game blocks the window until the engine reads them) |
-| Network room and admin commands | works, on Renku against the local server with a Python client as the second player: creating a password room (joining without it is refused), renaming, the three restriction toggles (the server refused a join, a team and an unregistered player), game style, a team's hedgehogs and colour, kick from the room, make host; as admin (the server makes loopback clients admins, and QEMU's network connects from loopback): server messages and protocol number read and set, a nickname and an address ban added and removed, a player banned and kicked from the server. Clear accounts cache is sent but not checked (the local server has no accounts) |
-| Downloadable content | works: the list loads from hedgewars.org and a package (Ready Timer) lands in the Data folder, on Renku |
-| Add-ons in the launcher's menus | works: a downloaded theme package (Patagonia) appeared in Theme and a match played on it; a test package's map, hat and flag appeared in Map and on the Team tab and a match played on that map with them; add-on missions are listed but their pictures aren't shown |
-| Scheme and weapon set editors | works: a new scheme (turn time 20 s) and a copied weapon set (2 bazookas) were made in the editors, saved as `.hwg`/`.hwa`, and the engine got them (turn timer counted from 20; `HEDGEWARS_LOG_CONFIG=1` prints the config sent); copy and delete checked |
-| Map size, maze style, feature size, seed | works: a maze ("Large islands" and a typed seed reached the engine: it logged `large_islands`), WFC, Cave with "Medium islands" and Forts at feature size 4 each played |
-| App icon | HVIF, from `tools/make-icon.py` |
-| arm64 | not built: Renku OS arm64 (hrev60072_940) has no OpenGL (no Mesa in its ports repository, no OpenGL kit in the system), which the engine draws with; Rust has no aarch64 Haiku target either (it would need a custom target and a nightly toolchain). Free Pascal is no longer needed |
+| arm64 | not built: Renku OS arm64 has no OpenGL (no Mesa, no OpenGL kit), and Rust has no aarch64 Haiku target |
+
+Known issues:
+- Registered nicknames (the password exchange) are written but untested:
+  the local server has no accounts.
+- An add-on downloaded while the launcher runs shows in its menus only
+  after a restart; add-on missions are listed without their pictures.
+- Watching a long game in progress: the moves so far are handed to the
+  engine before it starts, so the network window can stall for a moment.
+- `tests/lua/luaAPI/gravity_get_set.lua` misses its tolerance by 0.5 px,
+  with both engines, so it's in engine physics, not in this port.
 
 ## Interface guidelines
 
-The launcher follows the Haiku HIG: sentence case, action-labelled alerts that
-say how to fix the problem, the window's size and place remembered, a default
-button on each tab, dates in the system's format, every control reachable
-with Tab, and no clipping with a 15 pt system font. Where it deviates:
+The launcher follows the [Haiku Human Interface
+Guidelines](https://www.haiku-os.org/community/getting-involved/designing/):
+sentence case, alerts that say how to fix the problem, window sizes and
+places remembered, a default button where there's a main action, dates in
+the system's format, every control reachable with Tab, no clipping at
+15 pt. Where it differs:
 
-- The Settings window has no proxy or network settings (no network play),
-  no video recording, stereoscopy or zoom, and keeps the Qt frontend's
-  `settings.ini` rather than a flattened `BMessage`, because the engine reads
-  its key bindings from that file.
+- Settings live in the Qt frontend's `settings.ini` rather than a flattened
+  `BMessage`, because the engine reads its key bindings from that file.
+  There are no proxy, stereoscopy or zoom settings.
 - Scheme, weapon set and map names keep the game's capitals ("Pro Mode"):
-  they are names, and other Hedgewars players know them that way.
-- Flags, graves and forts are listed by their file names, without pictures.
+  they are names that Hedgewars players know.
+- Flags, graves and forts are listed by name, without pictures.
 - Mission and campaign lists follow the game's order, not the alphabet.
 - No Help menu: Hedgewars has no offline manual.
-- The network game's lobby and room have no default button: Enter sends
-  the line typed in their chat fields.
+- The network lobby and room have no default button: Enter sends the line
+  typed in their chat fields.
 
-Known issue: `tests/lua/luaAPI/gravity_get_set.lua` misses its tolerance
-by 0.5 px, the same with and without video, so it's in engine physics,
-not in this port.
+## License
+
+Hedgewars is free software under the GNU General Public License, version 2
+(see `COPYING` at the top of the tree), by Andrey Korotaev and the
+Hedgewars contributors. The Haiku port is under the same license.
