@@ -6,6 +6,7 @@
 #include <Application.h>
 #include <Bitmap.h>
 #include <Button.h>
+#include <DateTimeFormat.h>
 #include <Directory.h>
 #include <Entry.h>
 #include <File.h>
@@ -68,6 +69,7 @@ static const char* const kOpponents[] = {
 };
 static const char* const kGenerated[] = {"Random island", "Maze", "Cave", "Forts"};
 static const int kGeneratedGen[] = {0, 1, 2, 4};	// e$mapgen
+static const char* kNoHat = "No hat";
 static const char* const kMissionKinds[] = {"Training", "Challenge", "Scenario"};
 static const char* const kMissionKindLabels[] = {"Training", "Challenges", "Scenarios"};
 
@@ -76,7 +78,7 @@ enum {
 	kMsgPlayRecording = 'plrc', kMsgTrashRecording = 'trrc', kMsgGameOver = 'gmov',
 	kMsgScheme = 'schm', kMsgStyle = 'styl', kMsgMap = 'map ', kMsgMissionKind = 'mkin',
 	kMsgMissionSel = 'msel', kMsgCampaign = 'camp', kMsgCampaignSel = 'csel',
-	kMsgRecordingSel = 'rsel', kMsgToggle = 'togl',
+	kMsgRecordingSel = 'rsel', kMsgToggle = 'togl', kMsgTab = 'tab ',
 };
 
 static BMessenger sWindow;
@@ -153,12 +155,24 @@ static void clear_list(BListView* l)
 		delete item;
 }
 
+// tells the window which tab is showing, so Enter starts that tab's game
+class Tabs : public BTabView {
+public:
+	Tabs() : BTabView("tabs", B_WIDTH_FROM_LABEL) {}
+	void Select(int32 index) override
+	{
+		BTabView::Select(index);
+		if (Window())
+			Window()->PostMessage(kMsgTab);
+	}
+};
+
 // ── window ──
 class LauncherWindow : public BWindow {
 public:
 	LauncherWindow()
 		: BWindow(BRect(100, 100, 700, 500), "Hedgewars", B_TITLED_WINDOW,
-			B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS | B_QUIT_ON_WINDOW_CLOSE)
+			B_AUTO_UPDATE_SIZE_LIMITS | B_QUIT_ON_WINDOW_CLOSE)
 	{
 		fHats = list_dir("Graphics/Hats", ".png", false);
 		fNames = read_lines("Names/generic.txt");
@@ -178,7 +192,7 @@ public:
 		fMusic->SetMarked(true);
 		bar->AddItem(settings);
 
-		fTabs = new BTabView("tabs", B_WIDTH_FROM_LABEL);
+		fTabs = new Tabs;
 		fTabs->AddTab(MatchTab());
 		fTabs->AddTab(MissionsTab());
 		fTabs->AddTab(CampaignsTab());
@@ -186,6 +200,7 @@ public:
 		fTabs->AddTab(TeamTab());
 		fTabs->SetBorder(B_NO_BORDER);
 		fStatus = new BStringView("status", "");
+		fStatus->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));	// else it caps the window's width
 
 		BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 			.Add(bar)
@@ -200,6 +215,7 @@ public:
 		FillMissions();
 		FillCampaign();
 		FillRecordings();
+		PostMessage(kMsgTab);
 	}
 
 	// ── match ──
@@ -249,7 +265,7 @@ public:
 			names.push_back(t);
 		}
 		fTheme = Popup("Theme:", names, nature, 0);
-		BButton* start = new BButton("Start game", new BMessage(kMsgStartMatch));
+		BButton* start = fDefault[0] = new BButton("Start game", new BMessage(kMsgStartMatch));
 		BLayoutItem* hogsField = fHogs->CreateTextViewLayoutItem();
 		hogsField->SetExplicitMaxSize(BSize(90, B_SIZE_UNSET));
 		hogsField->SetExplicitAlignment(BAlignment(B_ALIGN_LEFT, B_ALIGN_VERTICAL_CENTER));
@@ -393,7 +409,7 @@ public:
 			.End()
 			.AddGroup(B_HORIZONTAL)
 				.AddGlue()
-				.Add(new BButton("Start mission", new BMessage(kMsgStartMission)))
+				.Add(fDefault[1] = new BButton("Start mission", new BMessage(kMsgStartMission)))
 			.End();
 		return v;
 	}
@@ -455,7 +471,7 @@ public:
 			.End()
 			.AddGroup(B_HORIZONTAL)
 				.AddGlue()
-				.Add(new BButton("Start mission", new BMessage(kMsgStartCampaign)))
+				.Add(fDefault[2] = new BButton("Start mission", new BMessage(kMsgStartCampaign)))
 			.End();
 		return v;
 	}
@@ -514,11 +530,13 @@ public:
 		BGroupView* v = new BGroupView("Recordings", B_VERTICAL);
 		BScrollView* ls;
 		fRecordingList = list_view(&ls, kMsgRecordingSel, kMsgPlayRecording);
-		fPlay = new BButton("Play", new BMessage(kMsgPlayRecording));
+		BStringView* hint = new BStringView("hint", "Interrupted games are kept as saved games, finished ones as demos.");
+		hint->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
+		fPlay = fDefault[3] = new BButton("Play", new BMessage(kMsgPlayRecording));
 		fTrash = new BButton("Move to Trash", new BMessage(kMsgTrashRecording));
 		BLayoutBuilder::Group<>(v)
 			.SetInsets(B_USE_DEFAULT_SPACING)
-			.Add(new BStringView("hint", "Interrupted games are kept as saved games, finished ones as demos."))
+			.Add(hint)
 			.Add(ls)
 			.AddGroup(B_HORIZONTAL)
 				.Add(fTrash)
@@ -535,9 +553,17 @@ public:
 		for (const char* kind : {"Saves", "Demos"}) {
 			std::vector<std::string> files = list_dir(kind, NULL, false, true);
 			for (auto f = files.rbegin(); f != files.rend(); ++f) {	// newest first
-				std::string label = std::string(kind[0] == 'S' ? "Saved game, " : "Demo, ") + *f;
-				label = label.substr(0, label.find('.'));
-				fRecordings.push_back(std::string(kind) + "/" + *f);
+				std::string rel = std::string(kind) + "/" + *f;
+				std::string label = kind[0] == 'S' ? "Saved game, " : "Demo, ";
+				// the date in the system's format, from when the file was written
+				time_t when;
+				BString date;
+				if (BEntry(BPath(gUserDir.Path(), rel.c_str()).Path()).GetModificationTime(&when) == B_OK
+					&& BDateTimeFormat().Format(date, when, B_SHORT_DATE_FORMAT, B_SHORT_TIME_FORMAT) == B_OK)
+					label += date.String();
+				else
+					label += f->substr(0, f->find('.'));
+				fRecordings.push_back(rel);
 				fRecordingList->AddItem(new BStringItem(label.c_str()));
 			}
 		}
@@ -560,7 +586,7 @@ public:
 			BNode(&entry).WriteAttr("_trk/original_path", B_STRING_TYPE, 0, path.Path(), strlen(path.Path()) + 1);
 			BDirectory dir(trash.Path());
 			if (entry.MoveTo(&dir) != B_OK)
-				(new BAlert("Hedgewars", "Couldn't move the recording to the Trash.", "OK"))->Go(NULL);
+				(new BAlert("Hedgewars", "Could not move the recording to the Trash.", "OK"))->Go(NULL);
 		}
 		FillRecordings();
 	}
@@ -577,17 +603,22 @@ public:
 		for (const std::string& d : list_dir("Sounds/voices", NULL, true))
 			voices.push_back(d);
 		fVoice = Popup("Voice:", voices, 0, 0);
-		std::vector<std::string> hats = {"NoHat"};
+		std::vector<std::string> hats = {kNoHat};
 		for (const std::string& h : fHats)
 			if (h != "NoHat")
 				hats.push_back(h);
 
+		// room for a typical name in the current font
+		BSize nameSize(be_plain_font->StringWidth("Sir Hedgehog the Great"), B_SIZE_UNSET);
+		BLayoutItem* teamField = fTeamName->CreateTextViewLayoutItem();
+		teamField->SetExplicitMinSize(nameSize);
 		BGridLayout* grid;
 		BLayoutBuilder::Group<>(v)
 			.SetInsets(B_USE_DEFAULT_SPACING)
 			.AddGroup(B_HORIZONTAL, B_USE_BIG_SPACING)
 				.AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
-					.AddTextControl(fTeamName, 0, 0)
+					.Add(fTeamName->CreateLabelLayoutItem(), 0, 0)
+					.Add(teamField, 1, 0)
 					.AddMenuField(fFlag, 0, 1)
 					.AddMenuField(fGrave, 0, 2)
 					.AddMenuField(fFort, 0, 3)
@@ -604,7 +635,9 @@ public:
 			fHat[h] = Popup("", hats, 0, 0);
 			fHat[h]->SetDivider(0);
 			grid->AddItem(fHogName[h]->CreateLabelLayoutItem(), 0, h);
-			grid->AddItem(fHogName[h]->CreateTextViewLayoutItem(), 1, h);
+			BLayoutItem* field = fHogName[h]->CreateTextViewLayoutItem();
+			field->SetExplicitMinSize(nameSize);
+			grid->AddItem(field, 1, h);
 			grid->AddView(fHat[h], 2, h);
 		}
 		return v;
@@ -619,7 +652,7 @@ public:
 		Mark(fVoice, fTeam.voice.c_str());
 		for (int h = 0; h < 8; h++) {
 			fHogName[h]->SetText(fTeam.hogs[h].c_str());
-			Mark(fHat[h], fTeam.hats[h].empty() ? "NoHat" : fTeam.hats[h].c_str());
+			Mark(fHat[h], fTeam.hats[h].empty() || fTeam.hats[h] == "NoHat" ? kNoHat : fTeam.hats[h].c_str());
 		}
 	}
 
@@ -633,6 +666,8 @@ public:
 		for (int h = 0; h < 8; h++) {
 			fTeam.hogs[h] = fHogName[h]->Text();
 			fTeam.hats[h] = MarkedLabel(fHat[h]);
+			if (fTeam.hats[h] == kNoHat)
+				fTeam.hats[h] = "NoHat";
 		}
 	}
 
@@ -651,6 +686,7 @@ public:
 			BRect frame;
 			if (s.FindRect("frame", &frame) == B_OK) {
 				MoveTo(frame.LeftTop());
+				ResizeTo(frame.Width(), frame.Height());	// the size limits keep it big enough
 				MoveOnScreen();
 			}
 			struct { const char* key; BMenuField* field; } popups[] = {
@@ -797,7 +833,7 @@ public:
 				g->replay.resize(size);
 				if (size <= 0 || f.Read(&g->replay[0], size) != size) {
 					delete g;
-					(new BAlert("Hedgewars", "Couldn't read the recording.", "OK"))->Go(NULL);
+					(new BAlert("Hedgewars", "Could not read the recording. It may be damaged.", "OK"))->Go(NULL);
 					break;
 				}
 				Start(g);
@@ -820,6 +856,11 @@ public:
 				break;
 			}
 			case kMsgMap: UpdateThemeField(); break;
+			case kMsgTab: {
+				int i = fTabs->Selection();
+				SetDefaultButton(i >= 0 && i < 4 ? fDefault[i] : NULL);	// the Team tab has none
+				break;
+			}
 			case kMsgMissionKind: FillMissions(); break;
 			case kMsgMissionSel: ShowMission(); break;
 			case kMsgCampaign: FillCampaign(); break;
@@ -891,6 +932,7 @@ private:
 	Thumbnail* fCampaignThumb;
 	BListView* fRecordingList;
 	BButton *fPlay, *fTrash;
+	BButton* fDefault[4] = {};
 	BTextControl* fTeamName;
 	BMenuField *fFlag, *fGrave, *fFort, *fVoice;
 	BTextControl* fHogName[8];
@@ -905,7 +947,7 @@ public:
 	{
 		srand(time(NULL));
 		if (!find_data()) {
-			(new BAlert("Hedgewars", "The Hedgewars game data wasn't found.", "Quit",
+			(new BAlert("Hedgewars", "The Hedgewars game data was not found. Reinstall the Hedgewars package.", "Quit",
 				NULL, NULL, B_WIDTH_AS_USUAL, B_STOP_ALERT))->Go();
 			Quit();
 			return;

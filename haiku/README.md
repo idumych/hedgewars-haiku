@@ -63,6 +63,21 @@ On Haiku R1/beta6 (x86_64), from the top of the tree (the package also runs on R
 | App icon | HVIF, from `tools/make-icon.py` |
 | arm64 | not built |
 
+## Interface guidelines
+
+The launcher follows the Haiku HIG: sentence case, action-labelled alerts that
+say how to fix the problem, the window's size and place remembered, a default
+button on each tab, dates in the system's format, every control reachable
+with Tab, and no clipping with a 15 pt system font. Where it deviates:
+
+- **Settings** is a menu of three on/off items rather than a "Settings…"
+  window, since that is all there is to set.
+- Scheme, weapon set and map names keep the game's capitals ("Pro Mode"):
+  they are names, and other Hedgewars players know them that way.
+- Flags, graves and forts are listed by their file names, without pictures.
+- Mission and campaign lists follow the game's order, not the alphabet.
+- No Help menu: Hedgewars has no offline manual.
+
 Known issue: `tests/lua/luaAPI/gravity_get_set.lua` misses its tolerance
 by 0.5 px, the same with and without video, so it's in engine physics,
 not in this port.

@@ -231,7 +231,7 @@ Outcome run_game(const Game& g)
 	if (bind(server, (sockaddr*)&sa, sizeof(sa)) < 0 || listen(server, 1) < 0
 		|| getsockname(server, (sockaddr*)&sa, &len) < 0) {
 		close(server);
-		out.error = "Couldn't open a local connection for the game.";
+		out.error = "Could not open a local connection for the game. Try again, and restart the computer if it keeps happening.";
 		return out;
 	}
 	std::string port = std::to_string(ntohs(sa.sin_port));
@@ -254,7 +254,7 @@ Outcome run_game(const Game& g)
 	pid_t pid;
 	if (posix_spawn(&pid, engine.c_str(), NULL, NULL, argv.data(), environ) != 0) {
 		close(server);
-		out.error = "Couldn't start the game engine (hwengine).";
+		out.error = "Could not start the game engine. Reinstall the Hedgewars package.";
 		return out;
 	}
 
@@ -265,7 +265,7 @@ Outcome run_game(const Game& g)
 			client = accept(server, NULL, NULL);
 		else if (waitpid(pid, NULL, WNOHANG) == pid) {
 			close(server);
-			out.error = "The game engine quit before it started.";
+			out.error = "The game engine quit before it started. Start Hedgewars from Terminal to see why.";
 			return out;
 		}
 	}
@@ -273,7 +273,7 @@ Outcome run_game(const Game& g)
 	if (client < 0) {
 		kill(pid, SIGKILL);
 		waitpid(pid, NULL, 0);
-		out.error = "The game engine didn't connect.";
+		out.error = "The game engine did not answer within 30 seconds. Try again.";
 		return out;
 	}
 
