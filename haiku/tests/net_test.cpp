@@ -1,5 +1,6 @@
 // Host test for launcher/NetProto.cpp: server message framing and a net game's engine config.
 #include "NetProto.h"
+#include "DrawnMap.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -53,7 +54,7 @@ int main()
 
 	// the master's settings, as another client receives them
 	Config c;
-	for (const auto& m : master_config(1, 2, "+maze+", 1, "Nature", "{seed}", 0)) {
+	for (const auto& m : master_config(predefined_schemes()[1], predefined_weapons()[2], "+maze+", 1, "Nature", "{seed}", 0)) {
 		assert(m.size() >= 2);
 		set_param(c, m[0], std::vector<std::string>(m.begin() + 1, m.end()));
 	}
@@ -88,6 +89,16 @@ int main()
 	cfg = unpack(engine_config(d, {r}, "Bath"));
 	assert(has(cfg, "emap Bath") && has(cfg, "e$turntime 45000") && has(cfg, "e$feature_size 12"));
 	assert(has(cfg, "escript Scripts/Multiplayer/Capture_the_Flag.lua") && has(cfg, "eammstore"));
+
+	// a hand-drawn map: DRAWNMAP holds the drawing as a .hwmap does, the engine gets it as edraw
+	std::string points(450, 'x');
+	Config h;
+	for (const auto& m : master_config(predefined_schemes()[0], predefined_weapons()[0], "+drawn+", 3,
+			"Nature", "s", 0, to_hwmap(points)))
+		set_param(h, m[0], std::vector<std::string>(m.begin() + 1, m.end()));
+	cfg = unpack(engine_config(h, {r}, "Nature"));
+	assert(has(cfg, "e$mapgen 3") && !has(cfg, "emap +drawn+"));
+	assert(has(cfg, "edraw " + points.substr(0, 200)) && has(cfg, "edraw " + points.substr(400)));
 
 	assert(chat_line("bob", "hi") == "\x01" "bob: hi");
 	assert(chat_line("bob", "/me waves") == "\x02* bob waves");

@@ -3,33 +3,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "schemes.h"	// generated from frontend-qt6/model/gameSchemeModel.cpp
-#include "weapons.h"	// frontend-qt6
+#include "DrawnMap.h"
 
 namespace net {
 
-// shortcut: these three tables repeat Launcher.cpp's; share them once the launcher has a config header
-#define AMMO(n) AMMOLINE_##n##_QT AMMOLINE_##n##_PROB AMMOLINE_##n##_DELAY AMMOLINE_##n##_CRATE
-static const struct { const char* name; const char* ammo; } kWeapons[] = {	// hwconsts.cpp
-	{"Default", AMMO(DEFAULT)}, {"Crazy", AMMO(CRAZY)}, {"Pro Mode", AMMO(PROMODE)},
-	{"Shoppa", AMMO(SHOPPA)}, {"Clean Slate", AMMO(CLEAN)}, {"Minefield", AMMO(MINES)},
-	{"Thinking with Portals", AMMO(PORTALS)}, {"One of Everything", AMMO(ONEEVERY)},
-	{"Highlander", AMMO(HIGHLANDER)}, {"Balanced Random Weapon", AMMO(BRW)},
-	{"Construction Mode", AMMO(CONSTRUCTION)}, {"Shoppa Pro", AMMO(SHOPPAPRO)},
-	{"HedgeEditor", AMMO(HEDGEEDITOR)},
-};
-// GameCFGWidget::getGameFlags: scheme fields 1..25
-static const unsigned kFlagBits[26] = {0, 0x1000, 0x10, 0x4, 0x8, 0x20, 0x40, 0x80, 0x100,
-	0x200, 0x400, 0x800, 0x2000, 0x4000, 0x8000, 0x10000, 0x20000, 0x40000, 0x80000,
-	0x100000, 0x200000, 0x400000, 0x800000, 0x1000000, 0x2000000, 0x4000000};
-// GameCFGWidget::getFullConfig: scheme fields 26..43
-static const struct { const char* cmd; int scale; } kNumbers[18] = {
-	{"damagepct", 1}, {"turntime", 1000}, {"inithealth", 1}, {"sd_turns", 1},
-	{"casefreq", 1}, {"minestime", 1000}, {"minesnum", 1}, {"minedudpct", 1},
-	{"explosives", 1}, {"airmines", 1}, {"sentries", 1}, {"healthprob", 1},
-	{"hcaseamount", 1}, {"waterrise", 1}, {"healthdec", 1}, {"ropepct", 1},
-	{"getawaytime", 1}, {"worldedge", 1},
-};
 // hwconsts.h HW_TEAMCOLOR_ARRAY
 static const unsigned kColors[] = {0xff0204, 0x4980c1, 0x1de6ba, 0xb541ef, 0xe55bb0,
 	0x20bf00, 0xfe8b0e, 0x8f5902, 0xffff01};
@@ -141,16 +118,16 @@ std::string param(const Config& c, const std::string& name, size_t i)
 	return it != c.end() && i < it->second.size() ? it->second[i] : "";
 }
 
-std::vector<std::vector<std::string>> master_config(int scheme, int weapons, const std::string& map,
-	int mapgen, const std::string& theme, const std::string& seed, int templateFilter)
+std::vector<std::vector<std::string>> master_config(const GameScheme& s, const WeaponSet& w,
+	const std::string& map, int mapgen, const std::string& theme, const std::string& seed,
+	int templateFilter, const std::string& drawnMap)
 {
-	const Scheme& s = kSchemes[scheme];
 	std::vector<std::string> sv = {"SCHEME", s.name};
 	for (int i = 1; i < 44; i++)
 		sv.push_back(i <= 25 ? (s.v[i] ? "true" : "false") : std::to_string(s.v[i]));
-	sv.push_back(std::string("!") + (s.scriptparam ? s.scriptparam : ""));
-	return {
-		{"AMMO", kWeapons[weapons].name, kWeapons[weapons].ammo},
+	sv.push_back("!" + s.scriptparam);
+	std::vector<std::vector<std::string>> out = {
+		{"AMMO", w.name, w.ammo},
 		{"SEED", seed},
 		{"TEMPLATE", std::to_string(templateFilter)},
 		{"THEME", theme},
@@ -159,8 +136,11 @@ std::vector<std::vector<std::string>> master_config(int scheme, int weapons, con
 		{"MAPGEN", std::to_string(mapgen)},
 		{"MAZE_SIZE", "0"},
 		{"FEATURE_SIZE", "12"},
-		{"MAP", map},
 	};
+	if (mapgen == 3)
+		out.push_back({"DRAWNMAP", drawnMap});
+	out.push_back({"MAP", map});
+	return out;
 }
 
 static void add(std::string& buf, const std::string& s)
@@ -170,23 +150,24 @@ static void add(std::string& buf, const std::string& s)
 	buf += m;
 }
 
-// the room's scheme as schemes.h values, or the built-in scheme of its name
-static void room_scheme(const Config& c, int v[44], std::string& scriptparam)
+// the room's scheme, or the predefined scheme of its name
+static GameScheme room_scheme(const Config& c)
 {
 	auto it = c.find("SCHEME");
 	if (it != c.end() && it->second.size() == 45) {
 		const std::vector<std::string>& sv = it->second;
+		GameScheme s;
+		s.name = sv[0];
 		for (int i = 1; i < 44; i++)
-			v[i] = sv[i] == "true" ? 1 : sv[i] == "false" ? 0 : atoi(sv[i].c_str());
-		scriptparam = sv[44].substr(sv[44].empty() ? 0 : 1);	// after its '!'
-		return;
+			s.v[i] = sv[i] == "true" ? 1 : sv[i] == "false" ? 0 : atoi(sv[i].c_str());
+		s.scriptparam = sv[44].substr(sv[44].empty() ? 0 : 1);	// after its '!'
+		return s;
 	}
-	const Scheme* s = &kSchemes[0];
-	for (const Scheme& k : kSchemes)
-		if (param(c, "SCHEME") == k.name)
-			s = &k;
-	memcpy(v, s->v, sizeof(s->v));
-	scriptparam = s->scriptparam ? s->scriptparam : "";
+	std::vector<GameScheme> all = predefined_schemes();
+	for (const GameScheme& s : all)
+		if (param(c, "SCHEME") == s.name)
+			return s;
+	return all[0];
 }
 
 std::string engine_config(const Config& c, const std::vector<Team>& teams, const std::string& theme)
@@ -205,29 +186,27 @@ std::string engine_config(const Config& c, const std::vector<Team>& teams, const
 		add(buf, "emap " + map);
 	add(buf, "etheme " + theme);
 	add(buf, "eseed " + param(c, "SEED"));
-	int v[44] = {};
-	std::string scriptparam;
-	room_scheme(c, v, scriptparam);
-	unsigned flags = 0;
-	for (int i = 1; i <= 25; i++)
-		if (v[i])
-			flags |= kFlagBits[i];
-	add(buf, "e$gmflags " + std::to_string(flags));
-	for (int i = 0; i < 18; i++)
-		add(buf, std::string("e$") + kNumbers[i].cmd + " " + std::to_string(v[26 + i] * kNumbers[i].scale));
+	GameScheme scheme = room_scheme(c);
+	const int* v = scheme.v;
+	for (const std::string& cmd : scheme_commands(scheme))
+		add(buf, cmd);
 	int mapgen = atoi(param(c, "MAPGEN").c_str());
 	add(buf, "e$template_filter " + std::to_string(atoi(param(c, "TEMPLATE").c_str())));
 	add(buf, "e$feature_size " + std::to_string(atoi(param(c, "FEATURE_SIZE").c_str())));
 	add(buf, "e$mapgen " + std::to_string(mapgen));
-	add(buf, "e$scriptparam " + scriptparam);
+	add(buf, "e$scriptparam " + scheme.scriptparam);
 	if (mapgen == 1 || mapgen == 2)	// maze, perlin
 		add(buf, "e$maze_size " + std::to_string(atoi(param(c, "MAZE_SIZE").c_str())));
-	// shortcut: hand-drawn maps (mapgen 3, DRAWNMAP: zlib) aren't sent to the engine
+	std::string drawn;
+	if (mapgen == 3 && from_hwmap(param(c, "DRAWNMAP"), drawn))	// qCompress, base64: a .hwmap
+		for (size_t i = 0; i < drawn.size(); i += 200)
+			add(buf, "edraw " + drawn.substr(i, 200));
 
 	std::string ammo = param(c, "AMMO", 1);
 	if (ammo.empty()) {
-		ammo = kWeapons[0].ammo;
-		for (const auto& w : kWeapons)
+		std::vector<WeaponSet> all = predefined_weapons();
+		ammo = all[0].ammo;
+		for (const WeaponSet& w : all)
 			if (param(c, "AMMO") == w.name)
 				ammo = w.ammo;
 	}
@@ -256,22 +235,6 @@ std::string engine_config(const Config& c, const std::vector<Team>& teams, const
 		}
 	}
 	return buf;
-}
-
-std::vector<std::string> scheme_names()
-{
-	std::vector<std::string> out;
-	for (const Scheme& s : kSchemes)
-		out.push_back(s.name);
-	return out;
-}
-
-std::vector<std::string> weapon_names()
-{
-	std::vector<std::string> out;
-	for (const auto& w : kWeapons)
-		out.push_back(w.name);
-	return out;
 }
 
 std::string chat_line(const std::string& nick, const std::string& text)

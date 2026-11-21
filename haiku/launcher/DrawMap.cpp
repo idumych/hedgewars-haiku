@@ -59,6 +59,8 @@ static std::string current_data()
 	return from_hwmap(read_file(current_path().Path()), data) ? data : "";
 }
 
+std::string drawn_map_file() { return read_file(current_path().Path()); }
+
 bool drawn_map_empty() { return decode_drawing(current_data()).strokes.empty(); }
 
 std::string drawn_map_config()

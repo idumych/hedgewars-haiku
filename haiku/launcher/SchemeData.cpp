@@ -72,6 +72,31 @@ std::vector<WeaponSet> predefined_weapons()
 	return out;
 }
 
+// GameCFGWidget::getGameFlags: scheme fields 1..25
+static const unsigned kFlagBits[26] = {0, 0x1000, 0x10, 0x4, 0x8, 0x20, 0x40, 0x80, 0x100,
+	0x200, 0x400, 0x800, 0x2000, 0x4000, 0x8000, 0x10000, 0x20000, 0x40000, 0x80000,
+	0x100000, 0x200000, 0x400000, 0x800000, 0x1000000, 0x2000000, 0x4000000};
+// GameCFGWidget::getFullConfig: scheme fields 26..43
+static const struct { const char* cmd; int scale; } kNumbers[18] = {
+	{"damagepct", 1}, {"turntime", 1000}, {"inithealth", 1}, {"sd_turns", 1},
+	{"casefreq", 1}, {"minestime", 1000}, {"minesnum", 1}, {"minedudpct", 1},
+	{"explosives", 1}, {"airmines", 1}, {"sentries", 1}, {"healthprob", 1},
+	{"hcaseamount", 1}, {"waterrise", 1}, {"healthdec", 1}, {"ropepct", 1},
+	{"getawaytime", 1}, {"worldedge", 1},
+};
+
+std::vector<std::string> scheme_commands(const GameScheme& s)
+{
+	unsigned flags = 0;
+	for (int i = 1; i <= 25; i++)
+		if (s.v[i])
+			flags |= kFlagBits[i];
+	std::vector<std::string> out = {"e$gmflags " + std::to_string(flags)};
+	for (int i = 0; i < 18; i++)
+		out.push_back(std::string("e$") + kNumbers[i].cmd + " " + std::to_string(s.v[26 + i] * kNumbers[i].scale));
+	return out;
+}
+
 // QVariant(QString).toBool() / toInt()
 static int to_int(const std::string& v)
 {

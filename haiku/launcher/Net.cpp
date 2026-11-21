@@ -40,6 +40,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "DrawMap.h"
 #include "NetProto.h"
 #include "Stats.h"
 
@@ -51,13 +52,15 @@ enum {
 	kMsgLobbyChat = 'nlch', kMsgRoomChat = 'nrch', kMsgCreate = 'ncre', kMsgJoin = 'njoi',
 	kMsgLeave = 'nlea', kMsgTeam = 'ntea', kMsgReady = 'nrdy', kMsgStart = 'nsta',
 	kMsgSetting = 'nset', kMsgPrompt = 'nprm', kMsgNetGameOver = 'ngov', kMsgRoomSel = 'nrsl',
-	kMsgHogs = 'nhog',
+	kMsgHogs = 'nhog', kMsgEditDrawing = 'ndrw', kMsgFollow = 'nfol',
 };
 
 // the generated maps: label, MAP, MAPGEN (mapContainer.cpp, MapModel.cpp)
 static const struct { const char* label; const char* map; int gen; } kGenerated[] = {
 	{"Random island", "+rnd+", 0}, {"Maze", "+maze+", 1}, {"Cave", "+perlin+", 2}, {"Forts", "+forts+", 4},
+	{"Hand-drawn", "+drawn+", 3},
 };
+static const int kGenCount = sizeof(kGenerated) / sizeof(kGenerated[0]), kHandDrawn = 4;	// then a separator, the fixed maps
 
 static std::string hex_digest(const std::string& s, const EVP_MD* md)
 {
@@ -181,6 +184,34 @@ private:
 	bool fAnswered = false;
 };
 
+// the lobby's players; a right click offers Follow for a player in a room (chatwidget.cpp)
+class PlayerList : public BListView {
+public:
+	PlayerList() : BListView("players") {}
+	std::function<bool(const std::string&)> canFollow;
+
+	void MouseDown(BPoint where) override
+	{
+		BListView::MouseDown(where);
+		int32 buttons = 0;
+		Window()->CurrentMessage()->FindInt32("buttons", &buttons);
+		int32 i = IndexOf(where);
+		if (!(buttons & B_SECONDARY_MOUSE_BUTTON) || i < 0)
+			return;
+		Select(i);
+		std::string nick = ((BStringItem*)ItemAt(i))->Text();
+		BPopUpMenu* menu = new BPopUpMenu("player", false, false);
+		BMessage* m = new BMessage(kMsgFollow);
+		m->AddString("nick", nick.c_str());
+		BMenuItem* follow = new BMenuItem("Follow", m);
+		follow->SetEnabled(canFollow && canFollow(nick));
+		menu->AddItem(follow);
+		menu->SetTargetForItems(Window());
+		menu->SetAsyncAutoDestruct(true);
+		menu->Go(ConvertToScreen(where), true, false, true);
+	}
+};
+
 class NetWindow : public BWindow {
 public:
 	NetWindow(const TeamInfo& team, const Game& prefs)
@@ -240,7 +271,11 @@ public:
 		fRooms->SetSelectionMessage(new BMessage(kMsgRoomSel));
 		fRooms->SetInvocationMessage(new BMessage(kMsgJoin));
 		fRooms->SetExplicitMinSize(BSize(450, 150));
-		fLobbyPlayers = new BListView("players");
+		PlayerList* players = new PlayerList();
+		players->canFollow = [this](const std::string& nick) {
+			return nick != fMyNick && fFlags[nick].find('i') != std::string::npos;	// in a room
+		};
+		fLobbyPlayers = players;
 		BScrollView* ps = new BScrollView("players scroll", fLobbyPlayers, 0, false, true);
 		ps->SetExplicitPreferredSize(BSize(130, B_SIZE_UNSET));
 		BScrollView* cs;
@@ -279,8 +314,9 @@ public:
 		fTeams = new BListView("teams");
 		BScrollView* ts = new BScrollView("teams scroll", fTeams, 0, false, true);
 		ts->SetExplicitMinSize(BSize(240, 90));
-		fScheme = popup("Scheme:", net::scheme_names());
-		fWeapons = popup("Weapons:", net::weapon_names());
+		fScheme = popup("Scheme:", {});
+		fWeapons = popup("Weapons:", {});
+		FillSchemeMenus();
 		std::vector<std::string> maps;
 		for (const auto& g : kGenerated)
 			maps.push_back(g.label);
@@ -294,7 +330,8 @@ public:
 		for (const std::string& m : fMaps)
 			maps.push_back(spaced(m));
 		fMap = popup("Map:", maps);
-		fMap->Menu()->AddItem(new BSeparatorItem(), 4);
+		fMap->Menu()->AddItem(new BSeparatorItem(), kGenCount);
+		fEditDrawing = new BButton("Edit drawing…", new BMessage(kMsgEditDrawing));
 		std::vector<std::string> themes;
 		for (const std::string& t : list_dir("Themes", NULL, true))
 			if (ini_value(("Themes/" + t + "/theme.cfg").c_str(), "hidden ").find("true") == std::string::npos)
@@ -327,6 +364,7 @@ public:
 						.AddMenuField(fScheme, 0, 0)
 						.AddMenuField(fWeapons, 0, 1)
 						.AddMenuField(fMap, 0, 2)
+						.Add(fEditDrawing, 2, 2)
 						.AddMenuField(fTheme, 0, 3)
 						.Add(fHogs->CreateLabelLayoutItem(), 0, 4)
 						.Add(fHogs->CreateTextViewLayoutItem(), 1, 4)
@@ -792,6 +830,42 @@ public:
 			f->SetEnabled(chief);
 		fHogs->SetEnabled(chief);
 		fStart->SetEnabled(chief);
+		fEditDrawing->SetEnabled(chief && MapIndex() == kHandDrawn);
+	}
+
+	int MapIndex() { return std::max(fMap->Menu()->IndexOf(fMap->Menu()->FindMarked()), 0); }
+
+	// predefined schemes and weapon sets, then the user's (Schemes/Game, Schemes/Ammo)
+	void FillSchemeMenus()
+	{
+		std::string scheme = marked(fScheme), weapons = marked(fWeapons);
+		fSchemeList = load_schemes(BPath(gUserDir.Path(), "Schemes/Game").Path());
+		fWeaponList = load_weapons(BPath(gUserDir.Path(), "Schemes/Ammo").Path());
+		auto fill = [](BMenuField* f, const auto& list, const std::string& select) {
+			BMenu* m = f->Menu();
+			m->RemoveItems(0, m->CountItems(), true);
+			for (size_t i = 0; i < list.size(); i++) {
+				if (i > 0 && !list[i].predefined && list[i - 1].predefined)
+					m->AddItem(new BSeparatorItem());
+				m->AddItem(new BMenuItem(list[i].name.c_str(), new BMessage(kMsgSetting)));
+			}
+			BMenuItem* item = m->FindItem(select.c_str());
+			(item ? item : m->ItemAt(0))->SetMarked(true);
+		};
+		fill(fScheme, fSchemeList, scheme);
+		fill(fWeapons, fWeaponList, weapons);
+	}
+
+	// schemes and drawings can change in their editors while the room is open
+	void WindowActivated(bool active) override
+	{
+		if (!active || fGameRunning)
+			return;
+		FillSchemeMenus();
+		if (fState == kInRoom && fChief)
+			SendConfig(false);
+		else if (fState == kInRoom)
+			ShowConfig();
 	}
 
 	// the room master's choices to the others (GameCFGWidget::fullNetConfig)
@@ -801,22 +875,36 @@ public:
 			return;
 		if (newSeed || fSeed.empty())
 			fSeed = new_seed();
-		int map = std::max(fMap->Menu()->IndexOf(fMap->Menu()->FindMarked()), 0);
-		std::string mapName = map < 4 ? kGenerated[map].map : fMaps[map - 5];	// 5: after the separator
-		int gen = map < 4 ? kGenerated[map].gen : 0;
+		int map = MapIndex();
+		bool fixed = map > kGenCount;	// after the separator
+		std::string mapName = fixed ? fMaps[map - kGenCount - 1] : kGenerated[map].map;
+		int gen = fixed ? 0 : kGenerated[map].gen;
 		std::string theme = marked(fTheme);
-		if (map > 4) {
+		if (fixed) {
 			std::vector<std::string> cfg = read_lines(("Maps/" + mapName + "/map.cfg").c_str());
 			if (!cfg.empty())
 				theme = cfg[0];
 		}
-		int scheme = std::max(fScheme->Menu()->IndexOf(fScheme->Menu()->FindMarked()), 0);
-		int weapons = std::max(fWeapons->Menu()->IndexOf(fWeapons->Menu()->FindMarked()), 0);
-		for (const auto& m : net::master_config(scheme, weapons, mapName, gen, theme, fSeed, 0)) {
+		GameScheme scheme = fSchemeList[0];
+		for (const GameScheme& g : fSchemeList)
+			if (g.name == marked(fScheme))
+				scheme = g;
+		WeaponSet weapons = fWeaponList[0];
+		for (const WeaponSet& w : fWeaponList)
+			if (w.name == marked(fWeapons))
+				weapons = w;
+		fEditDrawing->SetEnabled(map == kHandDrawn);
+		std::string drawn = map == kHandDrawn ? drawn_map_file() : "";
+		// only what changed since the last time (the editors can change a scheme or the drawing)
+		for (const auto& m : net::master_config(scheme, weapons, mapName, gen, theme, fSeed, 0, drawn)) {
+			std::vector<std::string> values(m.begin() + 1, m.end());
+			auto sent = fCfg.find(m[0]);
+			if (sent != fCfg.end() && sent->second == values)
+				continue;
 			std::vector<std::string> msg = {"CFG"};
 			msg.insert(msg.end(), m.begin(), m.end());
 			Send(msg);
-			net::set_param(fCfg, m[0], std::vector<std::string>(m.begin() + 1, m.end()));
+			net::set_param(fCfg, m[0], values);
 		}
 		ShowConfig();
 	}
@@ -912,6 +1000,7 @@ public:
 			m.AddString("echo", text.c_str());
 			self->PostMessage(&m);
 		};
+		g->teamChat = [self](const std::string& text) { self->Send({"TEAMCHAT", text}); };
 		fGameRunning = true;
 		fTeamButton->SetEnabled(false);
 		Hide();
@@ -1045,12 +1134,24 @@ public:
 					SetHogs(t);
 				FillTeams();
 				break;
-			case kMsgStart: Send({"START_GAME"}); break;
+			case kMsgStart:
+				SendConfig(false);	// a drawing changed since
+				Send({"START_GAME"});
+				break;
+			case kMsgEditDrawing: show_draw_map(); break;
+			case kMsgFollow:
+				if (fState == kInLobby) {
+					fChief = false;
+					Send({"FOLLOW", msg->GetString("nick", "")});
+				}
+				break;
 			case kMsgSetting: {
 				BMenuItem* item;
 				bool mapChanged = msg->FindPointer("source", (void**)&item) == B_OK
 					&& item->Menu() == fMap->Menu();
 				SendConfig(mapChanged);
+				if (mapChanged && MapIndex() == kHandDrawn && drawn_map_empty())	// nothing drawn yet
+					show_draw_map();
 				break;
 			}
 			case kMsgPrompt: {
@@ -1108,7 +1209,9 @@ private:
 	BCardLayout* fCards;
 	BTextControl *fHost, *fPort, *fNick, *fLobbyEntry, *fRoomName, *fRoomEntry;
 	BStringView *fConnectStatus, *fRoomTitle;
-	BButton *fConnect, *fJoin, *fTeamButton, *fStart;
+	BButton *fConnect, *fJoin, *fTeamButton, *fStart, *fEditDrawing;
+	std::vector<GameScheme> fSchemeList;
+	std::vector<WeaponSet> fWeaponList;
 	BColumnListView* fRooms;
 	BListView *fLobbyPlayers, *fRoomPlayers, *fTeams;
 	BTextView *fLobbyChat, *fRoomChat;

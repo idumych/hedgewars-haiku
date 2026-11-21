@@ -6,4 +6,5 @@
 
 void show_draw_map();
 bool drawn_map_empty();
-std::string drawn_map_config();	// "edraw" messages for the current drawing (GameCFGWidget::getFullConfig)
+std::string drawn_map_config();
+std::string drawn_map_file();	// the drawing as a .hwmap holds it: DRAWNMAP in a net game	// "edraw" messages for the current drawing (GameCFGWidget::getFullConfig)

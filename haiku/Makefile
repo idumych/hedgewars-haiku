@@ -110,7 +110,8 @@ test:
 		-o $(OBJ)/stats_test haiku/tests/stats_test.cpp haiku/launcher/StatsData.cpp
 	$(OBJ)/stats_test
 	$(CXX) -std=c++17 -Wall -g $(TEST_FLAGS) -Ihaiku/launcher -Ifrontend-qt6 \
-		-o $(OBJ)/net_test haiku/tests/net_test.cpp haiku/launcher/NetProto.cpp
+		-o $(OBJ)/net_test haiku/tests/net_test.cpp haiku/launcher/NetProto.cpp \
+		haiku/launcher/SchemeData.cpp haiku/launcher/DrawnMap.cpp -lz
 	$(OBJ)/net_test
 	$(CXX) -std=c++17 -Wall -g $(TEST_FLAGS) -Ihaiku/launcher \
 		-o $(OBJ)/content_test haiku/tests/content_test.cpp haiku/launcher/ContentData.cpp

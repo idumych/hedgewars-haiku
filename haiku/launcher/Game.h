@@ -45,7 +45,7 @@ struct Game {
 	// netIn, and where the engine's game messages and chat lines go
 	std::vector<std::string> args;
 	int netIn = -1;
-	std::function<void(const std::string&)> toNet, chat;
+	std::function<void(const std::string&)> toNet, chat, teamChat;
 };
 
 struct Outcome {

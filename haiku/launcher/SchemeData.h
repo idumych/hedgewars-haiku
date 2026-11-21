@@ -32,6 +32,8 @@ std::vector<WeaponSet> predefined_weapons();
 GameScheme parse_scheme(const std::string& name, const std::string& text);
 std::string format_scheme(const GameScheme& s);
 std::string fix_weapon_set(const std::string& s);	// SelWeaponWidget::fixWeaponSet
+// the engine commands for a scheme's flags and numbers ("e$gmflags …", "e$turntime …")
+std::vector<std::string> scheme_commands(const GameScheme& s);
 
 // predefined first, then the user's files in dir (Schemes/Game or Schemes/Ammo),
 // skipping files named like a predefined one
