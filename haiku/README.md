@@ -73,10 +73,15 @@ and, from the Hedgewars menu, two windows:
   KICKED, ROOMABANDONED, ADD_TEAM, TEAM_ACCEPTED, REMOVE_TEAM, TEAM_COLOR,
   HH_NUM, CFG (all of FULLMAPCONFIG, MAP, MAPGEN, MAZE_SIZE, SEED, TEMPLATE,
   FEATURE_SIZE, THEME, SCRIPT, SCHEME, AMMO), TOGGLE_READY, START_GAME,
-  RUN_GAME, EM, ROUND_FINISHED, ROUNDFINISHED, QUIT. Not implemented: the
+  RUN_GAME, EM, ROUND_FINISHED, ROUNDFINISHED, QUIT, FOLLOW (right-click a
+  player in the lobby), joining a room whose game is running (the engine
+  plays the game so far and watches), TEAMCHAT (`/team` in the game), and
+  hand-drawn maps (DRAWNMAP; the host picks Hand-drawn and Edit drawing…).
+  The host's scheme and weapon menus also list your own schemes and weapon
+  sets. Not implemented: the
   admin page and its commands (BAN, KICK, DELEGATE, SET_SERVER_VAR…), room
-  flags and renaming, FOLLOW, watching games in progress (REPLAY_START),
-  REDIRECT, TLS, team chat, hand-drawn maps (DRAWNMAP), game styles chosen
+  flags and renaming, the official server's recorded games (REPLAY_START),
+  REDIRECT, TLS, game styles chosen
   by the host (other hosts' styles are played), a room password when creating
   a room, and per-team hedgehog numbers and colours.
 - **Downloadable content**: the add-ons listed on hedgewars.org (with
@@ -135,6 +140,7 @@ and on Haiku also the launcher's progress file.
 | Hand-drawn maps | works: drawn with pencil, rectangle and eraser, saved as `.hwmap`, played as a match on that land; opening a `.hwmap` from the Qt frontend is checked by the host test (decodes and encodes back to the same bytes) |
 | Video recording | works: a clip recorded with R in a match became an mp4 that MediaPlayer plays with sound; WebM at 24 frames/s checked the same way; size and bit rate are fixed |
 | Network play | works: a net game between Haiku R1/beta6 and Renku (two QEMU machines) through the repo's `hedgewars-server` on the host: lobby, room, teams, hedgehog count, chat in the lobby, the room and the game, the game in sync to its end (the same statistics on both) and a demo kept on each; the room password and taken-nickname prompts checked; the registered-nickname password exchange is written, not tested (the local server has no accounts) |
+| Net play: watching, follow, drawn maps, team chat | works, checked through the local server: FOLLOW from the lobby's player menu (on both machines); joining a room whose game runs started the engine as a spectator on that game (a Python client's hand-drawn map, Desert theme, on R1/beta6); a net game on the host's hand-drawn map showed the same land on R1/beta6 and Renku; the host's own scheme (Quick turns, 20 s turns) and weapon set reached Renku and its engine; `/team` in the game reached the clan mate (a Python client) and its TEAMCHAT showed as `[Clan]` in the game. Not checked: resending a drawing edited while the room is open, watching a game with many turns already played (the moves are piped to the engine before it starts; a very long game blocks the window until the engine reads them) |
 | Downloadable content | works: the list loads from hedgewars.org and a package (Ready Timer) lands in the Data folder, on Renku; the launcher's own menus don't list what add-ons bring (the engine uses them) |
 | Scheme and weapon set editors | works: a new scheme (turn time 20 s) and a copied weapon set (2 bazookas) were made in the editors, saved as `.hwg`/`.hwa`, and the engine got them (turn timer counted from 20; `HEDGEWARS_LOG_CONFIG=1` prints the config sent); copy and delete checked |
 | Map size, maze style, feature size, seed | works for a maze ("Large islands" and a typed seed reached the engine: it logged `large_islands`); WFC is offered but not played |

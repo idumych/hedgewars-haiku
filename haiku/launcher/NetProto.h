@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include "SchemeData.h"
+
 namespace net {
 
 // "PART\nPART\n\n"
@@ -36,18 +38,16 @@ typedef std::map<std::string, std::vector<std::string>> Config;
 void set_param(Config& c, const std::string& name, const std::vector<std::string>& values);
 std::string param(const Config& c, const std::string& name, size_t i = 0);
 
-// the CFG messages a room master sends for these choices, in the Qt order (map last)
-std::vector<std::vector<std::string>> master_config(int scheme, int weapons, const std::string& map,
-	int mapgen, const std::string& theme, const std::string& seed, int templateFilter);
+// the CFG messages a room master sends for these choices, in the Qt order (map last);
+// drawnMap: for a hand-drawn map (mapgen 3), the drawing as a .hwmap holds it
+std::vector<std::vector<std::string>> master_config(const GameScheme& s, const WeaponSet& w,
+	const std::string& map, int mapgen, const std::string& theme, const std::string& seed,
+	int templateFilter, const std::string& drawnMap = "");
 
 // everything the engine is sent when it asks for the config. theme: the one to
 // use (a fixed map's own); the scheme's and weapons' values come from the room,
-// or the built-in ones of that name
+// or the predefined ones of that name
 std::string engine_config(const Config& c, const std::vector<Team>& teams, const std::string& theme);
-
-// the built-in schemes and weapon sets (schemes.h, weapons.h)
-std::vector<std::string> scheme_names();
-std::vector<std::string> weapon_names();
 
 // a chat line as the engine shows it (proto.cpp formatChatMsg)
 std::string chat_line(const std::string& nick, const std::string& text);

@@ -358,7 +358,11 @@ Outcome run_game(const Game& g)
 					if (g.chat)
 						g.chat(msg.substr(1));
 					break;
-				case 'b': case 'W': case '~': break;
+				case 'b':	// team chat
+					if (g.teamChat)
+						g.teamChat(msg.substr(1));
+					break;
+				case 'W': case '~': break;
 				case 'V': case 'v': {
 					if (msg == "v" && !g.videoPrefix.empty()) {	// the recorder finished
 						out.encoded = true;
