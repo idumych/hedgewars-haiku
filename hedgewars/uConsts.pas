@@ -525,10 +525,19 @@ var
              cLittle,
              cHHKick: hwFloat;
 
+{$IFDEF PAS2C}
+procedure initModule; // pas2c has no initialization sections; hwengine calls this first
+{$ENDIF}
+
 implementation
 uses uRust;
 
+{$IFDEF PAS2C}
+procedure initModule;
+begin
+{$ELSE}
 initialization
+{$ENDIF}
 
     cTeamHealthHeight:= round(19 * HDPIScaleFactor);
     cFontBorder:= round(2 * HDPIScaleFactor);
@@ -632,5 +641,8 @@ initialization
 
      cLittle:= hwf_min_positive();
      cHHKick:= hwf_new(1, 100);  // _0_01
+{$IFDEF PAS2C}
+end;
+{$ENDIF}
 
 end.

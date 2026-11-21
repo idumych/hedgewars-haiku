@@ -7,11 +7,13 @@ type
     LongWord = uinteger;
     Cardinal = uinteger;
     PtrInt = integer;
+    PtrUInt = uinteger;
     SizeInt = PtrInt;
     Word = uinteger;
     Byte = integer;
     SmallInt = integer;
     ShortInt = integer;
+    Int8 = integer;
     Int64 = integer;
     QWord = uinteger;
     GLint = integer;

@@ -654,6 +654,9 @@ begin
 {$ELSE}
 begin
 {$ENDIF}
+{$IFDEF PAS2C}
+    uConsts.initModule;
+{$ENDIF}
 
 {$IFDEF WINDOWS}
     ShcoreLibHandle := LoadLibrary('Shcore.dll');

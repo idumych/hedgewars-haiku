@@ -40,6 +40,7 @@ typedef string255 shortstring;
 
 typedef uint8_t Byte;
 typedef int8_t ShortInt;
+typedef int8_t Int8;
 typedef uint16_t Word;
 typedef int16_t SmallInt;
 typedef uint32_t LongWord;
@@ -63,6 +64,7 @@ typedef LongInt * PLongInt;
 typedef LongWord * PLongWord;
 typedef Integer * PInteger;
 typedef ptrdiff_t PtrInt;
+typedef size_t PtrUInt;
 typedef wchar_t widechar;
 typedef wchar_t* PWideChar;
 typedef char Char;

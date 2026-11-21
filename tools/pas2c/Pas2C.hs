@@ -7,6 +7,7 @@ import Data.Maybe
 import Data.Char
 import Text.Parsec.Prim hiding (State)
 import Control.Monad.State
+import Control.Monad
 import System.IO
 import PascalPreprocessor
 import Control.Exception

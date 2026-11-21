@@ -1,6 +1,9 @@
 # Hedgewars for Haiku, without SDL. Run on Haiku from the top of the tree:
 #   make -f haiku/Makefile            -> haiku/build/Hedgewars/{hwengine,lib/}
-# Needs: fpc mesa_devel glu_devel rust_bin (cargo)
+# Needs: llvm19_clang mesa_devel glu_devel rust_bin (cargo); fpc only for make compare
+#
+# The engine is built from haiku/engine-c, C generated from hedgewars/*.pas by
+# upstream's pas2c (haiku/tools/gen-engine-c.sh, run on a system with GHC).
 
 B        := haiku/build
 APP      := $(B)/Hedgewars
@@ -18,6 +21,13 @@ PHYS_SRCS    := $(addprefix misc/libphyslayer/,physfscompat.c physfsrwops.c phys
 PHYSFS_SRCS  := $(addprefix misc/libphysfs/,physfs.c physfs_byteorder.c physfs_unicode.c \
 	platform_posix.c platform_unix.c) $(wildcard misc/libphysfs/archiver_*.c)
 ENGINE_SRCS  := $(wildcard hedgewars/*.pas) hedgewars/SDLh.pas
+# the C engine and upstream's stand-in for Free Pascal's runtime; the runtime
+# overloads C functions (__attribute__((overloadable))), which needs clang
+ENGINE_C     := $(wildcard haiku/engine-c/*.c) $(wildcard project_files/hwc/rtl/*.c)
+ENGINE_OBJS  := $(patsubst %.c,$(OBJ)/engine/%.o,$(notdir $(ENGINE_C)))
+ENGINE_CC    ?= clang
+ENGINE_LIBS  := $(LIB)/libhwhaiku.so $(LIB)/liblua.so $(LIB)/libphyslayer.so \
+	$(LIB)/libhwengine_future.so $(LIB)/libphysfs.so
 
 all: $(APP)/hwengine $(APP)/Hedgewars
 
@@ -55,10 +65,22 @@ $(OBJ)/config.inc: hedgewars/config.inc.in haiku/Makefile
 		-e 's|$${HEDGEWARS_FULL_DATADIR}|$(DATADIR)|' \
 		-e 's|$${FONTS_DIRS_ARRAY}|array [0..1] of PChar = (nil, nil);|' $< > $@
 
-$(APP)/hwengine: $(ENGINE_SRCS) $(OBJ)/config.inc $(LIB)/libhwhaiku.so $(LIB)/liblua.so \
-		$(LIB)/libphyslayer.so $(LIB)/libhwengine_future.so $(LIB)/libphysfs.so
+vpath %.c haiku/engine-c project_files/hwc/rtl
+# -w: the generated code is warning-heavy by nature
+$(OBJ)/engine/%.o: %.c $(wildcard haiku/engine-c/*.h project_files/hwc/rtl/*.h)
+	@mkdir -p $(OBJ)/engine
+	$(ENGINE_CC) -c -O2 -std=gnu99 -w -DPAS2C -DGL_GLEXT_PROTOTYPES -Ihaiku/engine-c \
+		-Iproject_files/hwc/rtl -Imisc/libphysfs -Imisc/libphyslayer -Imisc/liblua -o $@ $<
+
+$(APP)/hwengine: $(ENGINE_OBJS) $(ENGINE_LIBS)
+	$(ENGINE_CC) -o $@ $(ENGINE_OBJS) -L$(LIB) -lhwhaiku -lhwlua -lphysfs -lphyslayer \
+		-lhwengine_future -lGL -lm
+
+# the Pascal engine, built with Free Pascal, only to compare the two (make compare)
+$(B)/pascal/hwengine: $(ENGINE_SRCS) $(OBJ)/config.inc $(ENGINE_LIBS)
+	@mkdir -p $(B)/pascal/obj
 	fpc -O2 -Si -Xs -Cs2000000 -B -fPIC -dSKIP_RESOURCES -dLUA_INTERNAL \
-		-Fi$(OBJ) -Fuhedgewars -FU$(OBJ) -Fl$(LIB) \
+		-Fi$(OBJ) -Fuhedgewars -FU$(B)/pascal/obj -Fl$(LIB) \
 		-o$(CURDIR)/$@ hedgewars/hwengine.pas
 
 $(APP)/Hedgewars: $(wildcard haiku/launcher/*.cpp haiku/launcher/*.h haiku/launcher/*.rdef) frontend-qt6/weapons.h
@@ -87,7 +109,13 @@ ifeq ($(shell uname -s),Haiku)
 	$(OBJ)/progress_test
 endif
 
+# the C engine must play exactly like the Pascal one (or online games go out of sync)
+compare: $(APP)/hwengine $(B)/pascal/hwengine
+	cp $(B)/pascal/hwengine $(APP)/hwengine-pascal	# beside lib/, where it finds its libraries
+	sh haiku/tests/compare-engines.sh $(APP)/hwengine $(APP)/hwengine-pascal; s=$$?; \
+		rm -f $(APP)/hwengine-pascal; exit $$s
+
 clean:
 	rm -rf $(B)
 
-.PHONY: all test clean
+.PHONY: all test compare clean

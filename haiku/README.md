@@ -13,8 +13,18 @@ SDL2, SDL_ttf, SDL_mixer, SDL_image and SDL_net entry points that
 | Joysticks | `BJoystick` |
 | Link to the launcher | POSIX sockets |
 
-`SDLh.pas` points its five library names at `libhwhaiku` on Haiku; nothing
-else in the engine changes. A native launcher (`launcher/`) replaces the Qt
+The engine is compiled from C: upstream's pas2c converts `hedgewars/*.pas`
+to `engine-c/` (with `tools/gen-engine-c.sh`, on a system with GHC), and
+clang compiles it with upstream's small stand-in for Free Pascal's runtime
+(`project_files/hwc/rtl`). The Pascal stays the source; the C is regenerated
+from it and committed, so building on Haiku needs neither GHC nor Free Pascal.
+The C engine plays exactly like the Pascal one: `make compare` runs upstream's
+Lua tests on both and fails on any difference in their output. Four small
+changes let pas2c handle this engine version: `uConsts`' initialization
+section becomes a procedure under `PAS2C`, `Int8`/`PtrUInt` are added to
+pas2c's types, and pas2c imports `Control.Monad` (needed with newer GHC).
+
+A native launcher (`launcher/`) replaces the Qt
 frontend's local pages, in tabs:
 
 - **Match**: opponent (the computer at five levels, or a second player),
@@ -37,8 +47,9 @@ Settings, the team, recordings and mission progress live in
 
 On Haiku R1/beta6 (x86_64), from the top of the tree (the package also runs on Renku OS):
 
-    pkgman install fpc mesa_devel glu_devel rust_bin
+    pkgman install llvm19_clang mesa_devel glu_devel rust_bin
     make -f haiku/Makefile                 # haiku/build/Hedgewars/
+    make -f haiku/Makefile compare         # C engine against Pascal (needs fpc)
     sh haiku/package/build-hpkg.sh         # haiku/build/hedgewars-*.hpkg
 
 `launcher/schemes.h` is generated from the Qt frontend's scheme list:
@@ -53,7 +64,7 @@ and statistics code on any system, and on Haiku also the launcher's progress fil
 
 | | State |
 |---|---|
-| Engine, physics, AI, Lua, map generation | works; upstream Lua tests 6 of 7 pass, with and without video |
+| Engine, physics, AI, Lua, map generation | works, built from C (pas2c); upstream Lua tests 6 of 7 pass, the same as the Pascal engine, with identical output |
 | Rendering (llvmpipe in a VM) | works |
 | Keyboard and mouse | works; keys arrive as SDL scancodes |
 | Sound effects, voices, music | works (checked from the VM's captured audio) |
