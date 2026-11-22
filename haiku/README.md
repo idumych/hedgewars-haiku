@@ -1,9 +1,10 @@
 # Hedgewars for Haiku
 
 [Hedgewars](https://hedgewars.org), the turn-based artillery game with
-hedgehogs, running natively on [Haiku](https://www.haiku-os.org) and Renku
-OS: no SDL, no Qt. The engine talks to the Haiku API directly, and a native
-launcher replaces the Qt frontend.
+hedgehogs, running natively on [Haiku](https://www.haiku-os.org), Renku OS
+and [VitruvianOS](https://v-os.dev) (a BeOS-like OS based on Linux): no SDL,
+no Qt. The engine talks to the Haiku API directly, and a native launcher
+replaces the Qt frontend.
 
 ![A match](screenshots/game.png)
 
@@ -63,7 +64,10 @@ then:
 
     pkgman install hedgewars-1.1.0-dev-1-x86_64.hpkg
 
-or build the package yourself (below).
+or build the package yourself (below). On VitruvianOS 0.6.3 or later 0.6.x,
+take the `.deb` for your machine (amd64 or arm64) from the same release:
+
+    sudo apt install ./hedgewars_1.1.0-dev-1_amd64.deb
 
 Hedgewars appears in Deskbar's Applications menu, and `hedgewars` starts it
 from Terminal. The package needs Haiku R1/beta6 or Renku OS on x86_64, and
@@ -90,6 +94,12 @@ On Haiku R1/beta6 (x86_64), from the top of the tree:
   and checks that the C engine plays exactly like it (see below).
 - `launcher/schemes.h` is generated from the Qt frontend's scheme list:
   `python3 haiku/tools/gen-schemes.py > haiku/launcher/schemes.h`.
+- **VitruvianOS:** the `.deb`s are built in GitHub Actions
+  (`.github/workflows/vos-deb.yml`, run by hand), natively on amd64 and arm64
+  runners in Debian trixie containers. `haiku/vos/make-sdk.sh` builds a
+  link-time SDK from VitruvianOS's source (its kits, headers and resource
+  tools), and `haiku/vos/build-deb.sh` builds and packages the game against
+  it. The same Makefile picks VitruvianOS when `pkg-config vos` is there.
 - `HWHAIKU_DEBUG=1` makes the engine print every input event it receives;
   `HEDGEWARS_LOG_CONFIG=1` makes the launcher print the game setup it sends.
 
@@ -127,6 +137,14 @@ Changes to upstream code, all small:
 - `avwrapper.c`: converts the game's sound to the sample format and rate
   the encoder takes (AAC, Vorbis), and uses a named channel layout.
 
+On VitruvianOS the same code builds against its kits; the differences are a
+few lines in `libhwhaiku`: its media kit (`media2`) opens sound files only from
+disk, decodes to float, and reads at most the frame count passed in; it has no
+joystick API; and the engine finds its `lib/` folder through an `$ORIGIN`
+path instead of Haiku's runtime loader. VitruvianOS's resource tools, run on a
+Linux build machine, don't resolve relative paths, so the build passes them
+absolute ones and writes imported pictures into the resource file inline.
+
 Haiku's Media Kit was tried first for video: on R1/beta6 its writer fails on
 every audio track, so the engine uses ffmpeg, which Haiku's own media plugin
 also uses.
@@ -159,8 +177,8 @@ filters.
 
 ## Status
 
-Tested in QEMU virtual machines: Haiku R1/beta6 x86_64 and Renku OS x86_64,
-software OpenGL (llvmpipe). Network play was tested only against the repo's
+Tested in QEMU virtual machines: Haiku R1/beta6 x86_64, Renku OS x86_64 and
+VitruvianOS 0.6.3 amd64, software OpenGL (llvmpipe). Network play was tested only against the repo's
 own server (`rust/hedgewars-server`) running locally, never the public one.
 
 | | State |
@@ -177,8 +195,10 @@ own server (`rust/hedgewars-server`) running locally, never the public one.
 | Downloadable content and add-ons | works: the list loads from hedgewars.org; a downloaded theme and a test package's map, hat and flag showed in the menus and were played |
 | Large fonts | checked at 15 pt: no clipping in any window |
 | Package | builds and passes the artifact checks; installed system-wide on Haiku R1/beta6 and in the home folder on Renku (build00073), started from Deskbar: a match, a recorded video, Settings and a network room |
-| Joysticks | written, not tested (no joystick in the VM) |
-| arm64 | not built: Renku OS arm64 has no OpenGL (no Mesa, no OpenGL kit), and Rust has no aarch64 Haiku target |
+| VitruvianOS amd64 | the CI-built `.deb` installed with apt on 0.6.3; started from Deskbar, a match with music and sound effects (checked in the VM's captured audio), the hedgehog walked, quitting kept a saved game. 0.6.2 can't play the game's sound (its sound player never asks for buffers), so the package needs 0.6.3 |
+| VitruvianOS arm64 | built natively in CI and checked (aarch64 binaries, the same libraries as amd64); not run: no arm64 VitruvianOS machine here |
+| Joysticks | written, not tested (no joystick in the VM); none on VitruvianOS (it has no joystick API) |
+| Haiku/Renku arm64 | not built: Renku OS arm64 has no OpenGL (no Mesa, no OpenGL kit), and Rust has no aarch64 Haiku target |
 
 Known issues:
 - Registered nicknames (the password exchange) are written but untested:
