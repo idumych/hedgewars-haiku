@@ -67,6 +67,19 @@ index 5c2f24c..bfdef13 100644
 -add_subdirectory(web)
 +#hedgewars: add_subdirectory(web)
  DoCatalogs("x-vnd.Haiku-libbe" kits)
+diff --git a/src/libs/CMakeLists.txt b/src/libs/CMakeLists.txt
+index 82b50ab..c7bc867 100644
+--- a/src/libs/CMakeLists.txt
++++ b/src/libs/CMakeLists.txt
+@@ -2,6 +2,6 @@ add_subdirectory(agg)
+ add_subdirectory(backlight)
+ add_subdirectory(icon)
+ add_subdirectory(linprog)
+-add_subdirectory(libscan)
++#hedgewars: add_subdirectory(libscan)  # needs SANE/CUPS; no kit we link uses it
+ add_subdirectory(mapm)
+-add_subdirectory(printcups)
++#hedgewars: add_subdirectory(printcups)  # needs SANE/CUPS; no kit we link uses it
 diff --git a/src/system/libroot2/CMakeLists.txt b/src/system/libroot2/CMakeLists.txt
 index 35412b7..07170be 100644
 --- a/src/system/libroot2/CMakeLists.txt
