@@ -27,7 +27,7 @@ jobs:
       - name: Install build dependencies
         run: |
           apt-get update
-          # VitruvianOS's own build deps (its ccpp-arm64.yml) for the kits the SDK builds,
+          # VitruvianOS's own build deps (its build/deps.cmake) for the kits the SDK builds,
           # then the game's: clang (the C engine), GL, ffmpeg, curl, OpenSSL, zlib.
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             ca-certificates git curl file python3 attr dpkg-dev xz-utils \
@@ -38,6 +38,8 @@ jobs:
             libudev-dev libsystemd-dev libblkid-dev libxkbcommon-dev \
             libgl-dev libegl-dev libgles-dev libpipewire-0.3-dev \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            libfluidsynth-dev ladspa-sdk liblilv-dev lv2-dev libspa-0.2-dev libgbm-dev \
+            libglu1-mesa-dev libwayland-dev \
             clang libavcodec-dev libavformat-dev libavutil-dev libswresample-dev \
             libcurl4-openssl-dev libssl-dev
 
