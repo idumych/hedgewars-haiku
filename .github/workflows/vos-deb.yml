@@ -52,7 +52,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /opt/vos-sdk
-          key: vos-sdk-0.6.2-${{ matrix.arch }}-${{ hashFiles('haiku/vos/make-sdk.sh', 'haiku/vos/*.patch') }}-debian-trixie
+          key: vos-sdk-0.6.3-${{ matrix.arch }}-${{ hashFiles('haiku/vos/make-sdk.sh', 'haiku/vos/*.patch') }}-debian-trixie
 
       - name: Build V\OS SDK
         run: |

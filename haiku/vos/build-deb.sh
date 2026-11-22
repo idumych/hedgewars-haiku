@@ -11,9 +11,10 @@ cd "$(dirname "$0")/../.."
 VERSION=1.1.0~dev
 REVISION=1
 ARCH=$(dpkg --print-architecture)
-# Built against VitruvianOS 0.6.x; the Haiku API is C++ and V\OS is pre-1.0, so class
+# Built against VitruvianOS 0.6.3 (0.6.2 plays no sound: its BSoundPlayer never asks for
+# buffers); the Haiku API is C++ and V\OS is pre-1.0, so class
 # layouts may change in 0.7: require a rebuild then.
-VOS_DEPENDS="vos (>= 0.6.2), vos (<< 0.7~)"
+VOS_DEPENDS="vos (>= 0.6.3), vos (<< 0.7~)"
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct 2>/dev/null || date +%s)}"
 
 for tool in rc xres resattr dpkg-deb dpkg-shlibdeps tar pkg-config; do

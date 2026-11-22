@@ -216,10 +216,10 @@ static int16_t* decode(SDL_RWops* rw, bool freesrc, size_t* outFrames)
 		fmt.u.raw_audio.format = media_raw_audio_format::B_AUDIO_SHORT;
 		fmt.u.raw_audio.byte_order = B_MEDIA_HOST_ENDIAN;
 #ifdef __VOS__
-		BMediaFormat wanted;
-		wanted.format = fmt;
-		bool decoded = t->DecodedFormat(&wanted) == B_OK;
-		fmt = wanted.format;
+		// media2 decodes to its own raw format (float), whatever is asked for
+		BMediaFormat decodedFormat;
+		bool decoded = t->DecodedFormat(&decodedFormat) == B_OK;
+		fmt = decodedFormat.format;
 #else
 		bool decoded = t->DecodedFormat(&fmt) == B_OK;
 #endif
@@ -243,7 +243,9 @@ static int16_t* decode(SDL_RWops* rw, bool freesrc, size_t* outFrames)
 	int64 frames;
 	media_header mh;
 	bool isFloat = fmt.u.raw_audio.format == media_raw_audio_format::B_AUDIO_FLOAT;	// media2 decodes to float
-	while (track->ReadFrames(buf.data(), &frames, &mh) == B_OK && frames > 0) {
+	size_t stride = (isFloat ? 4 : 2) * (channels ? channels : 1);
+	// media2 reads at most *frames frames (Haiku's ReadFrames only fills it in)
+	while ((frames = buf.size() / stride, track->ReadFrames(buf.data(), &frames, &mh)) == B_OK && frames > 0) {
 		if (!isFloat) {
 			pcm.insert(pcm.end(), (int16_t*)buf.data(), (int16_t*)buf.data() + frames * channels);
 			continue;

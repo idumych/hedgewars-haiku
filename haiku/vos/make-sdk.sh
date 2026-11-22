@@ -1,5 +1,5 @@
 #!/bin/sh
-# make-sdk.sh: builds a link-time SDK for VitruvianOS 0.6.2 (a BeOS-like OS based on
+# make-sdk.sh: builds a link-time SDK for VitruvianOS 0.6.3 (a BeOS-like OS based on
 # Linux), so Hedgewars can be compiled, linked and packaged as a .deb without a
 # VitruvianOS machine: the public and private interface headers, libroot, libbe,
 # libtranslation, libtracker, libgame, libopengl and libmedia2, and the rc/xres/resattr
@@ -11,11 +11,12 @@
 # Runs natively on amd64 or arm64 Debian trixie (VitruvianOS's userland, glibc 2.41),
 # with the apt packages listed in .github/workflows/vos-deb.yml. None of these libraries
 # go into the package: the game uses the ones installed on VitruvianOS. The link proves
-# every symbol it needs is exported by 0.6.2.
+# every symbol it needs is exported by 0.6.3. (0.6.2 is not enough: its BSoundPlayer
+# never calls the buffer callback, so the game would be silent.)
 # Adapted from Folio's tools/vos-sdk/make-sdk.sh (github.com/idumych/folio).
 set -eu
 
-VOS_TAG=0.6.2
+VOS_TAG=0.6.3
 HERE=$(cd "$(dirname "$0")" && pwd)
 WORK=$(mkdir -p "${1:-.vos-sdk}" && cd "${1:-.vos-sdk}" && pwd)
 SRC=$WORK/src
@@ -71,9 +72,9 @@ cp "$B/rc/rc" "$B/xres" "$B/resattr" "$SDK/bin/"
 ls "$SDK/lib" "$SDK/bin"
 
 # vos.pc the way newer VitruvianOS (vos-dev) generates it
-python3 - "$SRC/vos" "$SDK" "$ARCH" <<'EOF'
+python3 - "$SRC/vos" "$SDK" "$ARCH" "$VOS_TAG" <<'EOF'
 import re, sys
-vos, sdk, arch = sys.argv[1:]
+vos, sdk, arch, vos_tag = sys.argv[1:]
 s = open(vos + '/build/headers.cmake').read()
 body = s[s.index('PUBLIC_HEADERS'):]
 body = body[:body.index(')')]
@@ -90,8 +91,8 @@ includedir=${{prefix}}/include/vos
 libdir=${{prefix}}/lib
 
 Name: vos
-Description: VitruvianOS 0.6.2 link-time SDK ({arch})
-Version: 0.6.2
+Description: VitruvianOS {vos_tag} link-time SDK ({arch})
+Version: {vos_tag}
 Libs: -L${{libdir}} -lbe -lroot
 Cflags: {' '.join(flags)}
 """)
