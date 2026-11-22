@@ -15,6 +15,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <algorithm>
 #include <vector>
 
 struct Mix_Chunk {	// layout as SDL_mixer's
@@ -55,10 +56,14 @@ static void* volatile sPostData;
 
 static inline int16_t clamp16(int v) { return v > 32767 ? 32767 : v < -32768 ? -32768 : v; }
 
-static void mix(void*, void* buffer, size_t size, const media_raw_audio_format&)
+static void mix(void*, void* buffer, size_t size, const media_raw_audio_format& format)
 {
-	int16_t* out = (int16_t*)buffer;
-	size_t frames = size / 4;
+	// 16-bit as asked for; VitruvianOS's media2 may hand over a float buffer instead
+	bool isFloat = format.format == media_raw_audio_format::B_AUDIO_FLOAT;
+	size_t frames = size / (isFloat ? 8 : 4);
+	static std::vector<int16_t> pcm;
+	pcm.resize(frames * 2);
+	int16_t* out = isFloat ? pcm.data() : (int16_t*)buffer;
 	static std::vector<int> acc;	// kept between calls: no allocation on the audio thread
 	acc.assign(frames * 2, 0);
 	pthread_mutex_lock(&sLock);
@@ -108,9 +113,12 @@ static void mix(void*, void* buffer, size_t size, const media_raw_audio_format&)
 	for (size_t i = 0; i < frames * 2; i++)
 		out[i] = clamp16(acc[i]);
 	pthread_mutex_unlock(&sLock);
+	if (isFloat)
+		for (size_t i = 0; i < frames * 2; i++)
+			((float*)buffer)[i] = out[i] / 32768.f;
 	pthread_mutex_lock(&sPostLock);
-	if (sPostMix)
-		sPostMix(sPostData, (Uint8*)buffer, (int)size);
+	if (sPostMix)	// the video recorder wants 16-bit samples
+		sPostMix(sPostData, (Uint8*)out, (int)(frames * 4));
 	pthread_mutex_unlock(&sPostLock);
 }
 
@@ -216,7 +224,8 @@ static int16_t* decode(SDL_RWops* rw, bool freesrc, size_t* outFrames)
 		bool decoded = t->DecodedFormat(&fmt) == B_OK;
 #endif
 		if (decoded && fmt.type == B_MEDIA_RAW_AUDIO
-			&& fmt.u.raw_audio.format == media_raw_audio_format::B_AUDIO_SHORT) {
+			&& (fmt.u.raw_audio.format == media_raw_audio_format::B_AUDIO_SHORT
+				|| fmt.u.raw_audio.format == media_raw_audio_format::B_AUDIO_FLOAT)) {
 			track = t;
 			break;
 		}
@@ -230,11 +239,19 @@ static int16_t* decode(SDL_RWops* rw, bool freesrc, size_t* outFrames)
 	int channels = fmt.u.raw_audio.channel_count;
 	float rate = fmt.u.raw_audio.frame_rate;
 	std::vector<int16_t> pcm;	// interleaved, source channels and rate
-	std::vector<char> buf(fmt.u.raw_audio.buffer_size ? fmt.u.raw_audio.buffer_size : 65536);
+	std::vector<char> buf(std::max<size_t>(fmt.u.raw_audio.buffer_size, 1 << 20));	// room for any one read
 	int64 frames;
 	media_header mh;
-	while (track->ReadFrames(buf.data(), &frames, &mh) == B_OK && frames > 0)
-		pcm.insert(pcm.end(), (int16_t*)buf.data(), (int16_t*)buf.data() + frames * channels);
+	bool isFloat = fmt.u.raw_audio.format == media_raw_audio_format::B_AUDIO_FLOAT;	// media2 decodes to float
+	while (track->ReadFrames(buf.data(), &frames, &mh) == B_OK && frames > 0) {
+		if (!isFloat) {
+			pcm.insert(pcm.end(), (int16_t*)buf.data(), (int16_t*)buf.data() + frames * channels);
+			continue;
+		}
+		const float* f = (const float*)buf.data();
+		for (int64 i = 0; i < frames * channels; i++)
+			pcm.push_back(clamp16((int)(f[i] * 32767.f)));
+	}
 	file.ReleaseTrack(track);
 	free(data);
 
